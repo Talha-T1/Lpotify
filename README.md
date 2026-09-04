@@ -30,7 +30,6 @@
 - 📋 **Playlists** — create, edit, like — everything is persisted
 - 🔗 **Music sharing (.Lpfcfg)** — share playlists as `.Lpfcfg` config files and import them; the file name is fully up to you, the extension is `.Lpfcfg`
 - 🌍 **Multilingual** — English / Turkish (system language is auto-detected, changeable in Settings)
-- 🎨 **Open-source logo** — the Spotify logo rotated 180° 😄
 
 ## 🚀 Installation (Users)
 
