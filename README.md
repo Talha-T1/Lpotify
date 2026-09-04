@@ -67,6 +67,11 @@ All dependencies are permissively licensed.
 
 Lpotify is **not affiliated with, endorsed by, or connected to** Spotify or any other company, streaming platform, or brand. The app only uses third-party open-source tools and publicly available resources. Compliance with the copyright laws of your country regarding content access and usage is **the user's responsibility**. This project is intended for educational and personal use.
 
+## 👤 Author / Geliştirici
+
+- **GitHub:** [Talha-T1](https://github.com/Talha-T1)
+- **Project / Proje:** [Talha-T1/Lpotify](https://github.com/Talha-T1/Lpotify)
+
 ## 📄 License
 
 This project is licensed under the [MIT License](./LICENSE) — anyone may use it for any purpose; the only requirement is to keep the license notice.
@@ -117,6 +122,11 @@ npm run dist     # Windows setup (.exe) üret
 ## ⚠️ Sorumluluk Reddi
 
 Lpotify; Spotify ya da başka herhangi bir şirket, yayın platformu veya markayla **bağlantılı, desteklenen veya ortak değildir**. Uygulama yalnızca üçüncü taraf açık kaynak araçlarını ve halka açık kaynakları kullanır. İçeriklere erişim ve kullanımın bulunduğunuz ülkenin telif mevzuatına uygunluğu **kullanıcının sorumluluğundadır**. Proje eğitim ve kişisel kullanım amaçlıdır.
+
+## 👤 Author / Geliştirici
+
+- **GitHub:** [Talha-T1](https://github.com/Talha-T1)
+- **Proje:** [Talha-T1/Lpotify](https://github.com/Talha-T1/Lpotify)
 
 ## 📄 Lisans
 
