@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
+import BottomNav from './components/BottomNav';
 import Player from './components/Player';
 import HomePage from './pages/HomePage';
 import SearchPage from './pages/SearchPage';
@@ -36,13 +37,18 @@ export default function App() {
   };
 
   return (
-    <div className="h-full w-full flex flex-col bg-black overflow-hidden">
+    <div className="h-[100dvh] w-full flex flex-col bg-black overflow-hidden">
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto bg-gradient-to-b from-lpotify-gray-dark to-lpotify-dark">
+        {/* Masaüstü kenar çubuğu: lg ve üzeri */}
+        <div className="hidden lg:flex h-full">
+          <Sidebar />
+        </div>
+        <main className="flex-1 overflow-y-auto bg-gradient-to-b from-lpotify-gray-dark to-lpotify-dark" style={{ WebkitOverflowScrolling: 'touch' }}>
           {renderPage()}
         </main>
       </div>
+      {/* Mobil alt gezinme çubuğu (lg altı) */}
+      <BottomNav />
       <Player />
     </div>
   );
