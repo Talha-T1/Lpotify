@@ -18,3 +18,9 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+# Android build outputs
+android/app/build/
+android/.gradle/
+android/build/
+android/local.properties
+*.apk

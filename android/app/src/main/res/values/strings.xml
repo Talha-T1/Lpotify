@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Lpotify</string>
+    <string name="title_activity_main">Lpotify</string>
+    <string name="package_name">com.lpotify.mobile</string>
+    <string name="custom_url_scheme">com.lpotify.mobile</string>
+</resources>
