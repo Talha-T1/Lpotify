@@ -5,7 +5,7 @@ import { usePlayerStore } from '../store/playerStore';
 import { usePlaylistStore } from '../store/playlistStore';
 import { useDownloadsStore } from '../store/downloadsStore';
 import { formatDuration } from '../utils/musicApi';
-import { cacheTrack } from '../utils/offlineCache';
+import { cacheTrack, removeCachedTrack } from '../utils/offlineCache';
 import { isElectron, downloadAudioFile } from '../utils/electronBridge';
 import { prefetchTrack } from '../utils/audioCache';
 import { useT } from '../i18n';
@@ -37,6 +37,7 @@ export default function TrackList({ tracks, showHeader = true, showCover = true 
     if (downloading.includes(track.id)) return;
     if (downloads.some((t) => t.id === track.id)) {
       removeDownload(track.id);
+      removeCachedTrack(track.id).catch(() => {});
       return;
     }
     setDownloading(track.id, true);

@@ -59,6 +59,19 @@ const dict = {
     importNotice: 'çalma listesi içe aktarıldı',
     shareAs: '.Lpfcfg olarak paylaş',
     playlistsLabel: 'Çalma Listesi',
+    likedSongsDesc: 'Beğendiğiniz tüm şarkılar',
+    unknownArtist: 'Bilinmeyen Sanatçı',
+    unknownTrack: 'Bilinmeyen Şarkı',
+    singleAlbum: 'Tekli',
+    sharedList: 'Paylaşılan Liste',
+    audioLoadError: 'Ses yüklenemedi',
+    audioPlayingFull: 'Tam şarkı çalınıyor',
+    audioPlayingPreview: 'Önizleme çalınıyor (30 sn)',
+    miniPlayer: 'Mini Oynatıcı',
+    previous: 'Önceki Şarkı',
+    next: 'Sıradaki Şarkı',
+    play: 'Çal',
+    pause: 'Durdur',
   },
   en: {
     home: 'Home',
@@ -112,6 +125,19 @@ const dict = {
     importNotice: 'playlist imported',
     shareAs: 'Share as .Lpfcfg',
     playlistsLabel: 'Playlist',
+    likedSongsDesc: 'All your favorite songs',
+    unknownArtist: 'Unknown Artist',
+    unknownTrack: 'Unknown Track',
+    singleAlbum: 'Single',
+    sharedList: 'Shared Playlist',
+    audioLoadError: 'Failed to load audio',
+    audioPlayingFull: 'Playing full track',
+    audioPlayingPreview: 'Playing preview (30s)',
+    miniPlayer: 'Mini Player',
+    previous: 'Previous Track',
+    next: 'Next Track',
+    play: 'Play',
+    pause: 'Pause',
   },
 } as const;
 
@@ -127,11 +153,7 @@ function loadLang(): Lang {
     const l = localStorage.getItem('lpotify-lang');
     if (l === 'en' || l === 'tr') return l;
   } catch { /* ignore */ }
-  // Ayar yapılmamışsa sistem dilini otomatik algıla (sonradan Ayarlar'dan değiştirilebilir).
-  try {
-    const nav = (navigator.language || 'en').toLowerCase();
-    return nav.startsWith('tr') ? 'tr' : 'en';
-  } catch { /* ignore */ }
+  // Kurulumda ve ilk açılışta varsayılan olarak doğrudan Türkçe başlar.
   return 'tr';
 }
 
@@ -139,7 +161,7 @@ export const useI18n = create<I18nStore>((set) => ({
   lang: loadLang(),
   setLang: (lang) => {
     try { localStorage.setItem('lpotify-lang', lang); } catch { /* ignore */ }
-    document.title = 'Lpotify - ' + (lang === 'tr' ? 'Ücretsiz Müzik' : 'Free Music Streaming');
+    document.title = 'Lpotify';
     set({ lang });
   },
 }));

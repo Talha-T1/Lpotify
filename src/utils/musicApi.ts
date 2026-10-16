@@ -1,4 +1,4 @@
-﻿import { Track } from '../types';
+import { Track } from '../types';
 
 const DEEZER_API = 'https://api.deezer.com';
 const ARCHIVE_API = 'https://archive.org/advancedsearch.php';

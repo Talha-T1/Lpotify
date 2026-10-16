@@ -1,4 +1,5 @@
 import { resolveAudioFull, isElectron } from './electronBridge';
+import { resolveTrack } from './musicApi';
 import { Track } from '../types';
 
 /**
@@ -94,20 +95,39 @@ export function raceResolveQueries(
 
 /** Şarkıyı (varsa) çözümlenmiş akışıyla önceden yükle — hover/prefetch için. */
 export async function prefetchTrack(track: Track): Promise<void> {
-  if (!track || track.filePath || !isElectron()) return;
-  const minDur = minDurationFor(track);
-  const queries = [
-    track.artist + ' ' + track.title,
-    track.title + ' audio',
-  ];
-  if (queries.some((q) => {
-    const c = resolvedCache.get(q);
-    return c && isAcceptable(c.duration, minDur);
-  })) return;
-  try {
-    const r = await raceResolveQueries(queries, minDur);
-    if (r) resolvedCache.set(queries[0], r);
-  } catch { /* sessizce geç */ }
+  if (!track || track.filePath) return;
+  const cacheKey = track.id || (track.artist + ' ' + track.title);
+  if (resolvedCache.has(cacheKey)) return;
+
+  if (isElectron()) {
+    const minDur = minDurationFor(track);
+    const queries = [
+      track.artist + ' ' + track.title,
+      track.title + ' audio',
+    ];
+    if (queries.some((q) => {
+      const c = resolvedCache.get(q);
+      return c && isAcceptable(c.duration, minDur);
+    })) return;
+    try {
+      const r = await raceResolveQueries(queries, minDur);
+      if (r) {
+        resolvedCache.set(queries[0], r);
+        resolvedCache.set(cacheKey, r);
+        persistCache();
+      }
+    } catch { /* sessizce geç */ }
+  } else {
+    // Web tarayıcı: arka planda tam parça çözümlemesini yap ve önbelleğe al
+    try {
+      const resolved = await resolveTrack(track);
+      if (resolved && resolved.audioUrl) {
+        const entry = { url: resolved.audioUrl, duration: resolved.duration, at: Date.now() };
+        resolvedCache.set(cacheKey, entry);
+        persistCache();
+      }
+    } catch { /* sessizce geç */ }
+  }
 }
 
 /** Bir şarkı listesini sırayla (1 sn arayla) önceden yükler — kuyruk kurulunca çağrılır. */

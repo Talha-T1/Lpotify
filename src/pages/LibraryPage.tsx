@@ -40,7 +40,7 @@ export default function LibraryPage() {
       setNotice(t('invalidConfig'));
       return;
     }
-    createPlaylist(config.name || 'Paylaşılan Liste', config.description || '');
+    createPlaylist(config.name || t('sharedList'), config.description || '');
     // En son oluşturulan listeye şarkıları ekle.
     const all = usePlaylistStore.getState().playlists;
     const target = all[all.length - 1];
@@ -88,9 +88,9 @@ export default function LibraryPage() {
       >
         <div className="flex items-center gap-3 mb-3">
           <Heart size={24} className="text-white" fill="white" />
-          <h2 className="text-2xl font-bold text-white">Beğenilen Şarkılar</h2>
+          <h2 className="text-2xl font-bold text-white">{t('likedSongs')}</h2>
         </div>
-        <p className="text-white/70 text-sm">{playlists[0]?.tracks.length || 0} şarkı</p>
+        <p className="text-white/70 text-sm">{likedPlaylist?.tracks.length || 0} {t('songs')}</p>
       </div>
 
       {/* Playlists Grid */}
@@ -121,7 +121,7 @@ export default function LibraryPage() {
               )}
             </div>
             <p className="text-sm font-semibold text-white truncate">{playlist.name}</p>
-            <p className="text-xs text-lpotify-gray-light mt-1">{playlist.tracks.length} şarkı</p>
+            <p className="text-xs text-lpotify-gray-light mt-1">{playlist.tracks.length} {t('songs')}</p>
             <div className="mt-2 flex items-center gap-2">
               <button
                 onClick={(e) => {

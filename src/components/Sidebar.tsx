@@ -113,7 +113,7 @@ export default function Sidebar() {
             <div className="flex flex-col min-w-0">
               <span className="text-sm text-white font-medium truncate">{playlist.name}</span>
               <span className="text-xs text-lpotify-gray-light">
-                {playlist.tracks.length} şarkı
+                {playlist.tracks.length} {t('songs')}
               </span>
             </div>
           </NavLink>
