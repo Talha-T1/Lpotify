@@ -19,7 +19,7 @@ interface TrackListProps {
 export default function TrackList({ tracks, showHeader = true, showCover = true }: TrackListProps) {
   const t = useT();
   const { currentTrack, isPlaying, setQueue, setIsPlaying, setCurrentTrack } = usePlayerStore();
-  const { playlists, addToPlaylist } = usePlaylistStore();
+  const { playlists, addToPlaylist, removeFromPlaylist } = usePlaylistStore();
   const { downloads, addDownload, setDownloading, downloading, downloadProgress, setDownloadProgress, removeDownload } = useDownloadsStore();
   const likedPlaylist = playlists.find(p => p.id === 'liked-songs');
   const userPlaylists = playlists.filter((playlist) => playlist.id !== 'liked-songs');
@@ -152,7 +152,11 @@ export default function TrackList({ tracks, showHeader = true, showCover = true 
                 </span>
               </div>
               <div className="relative flex items-center justify-end gap-1">
-                <button onClick={(e) => { e.stopPropagation(); if (!liked) addToPlaylist('liked-songs', track); }}
+                <button onClick={(e) => {
+                  e.stopPropagation();
+                  if (liked) removeFromPlaylist('liked-songs', track.id);
+                  else addToPlaylist('liked-songs', track);
+                }}
                   className={`p-1 rounded-full transition-colors ${liked ? 'text-lpotify-green' : 'text-lpotify-gray-light opacity-0 group-hover:opacity-100'}`}>
                   <Heart size={14} fill={liked ? 'currentColor' : 'none'} />
                 </button>

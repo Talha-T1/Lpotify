@@ -74,6 +74,7 @@ const dict = {
     pause: 'Durdur',
     addToPlaylist: 'Çalma listesine ekle',
     noPlaylists: 'Önce bir çalma listesi oluşturun',
+    deletePlaylist: 'Çalma listesini sil',
   },
   en: {
     home: 'Home',
@@ -142,6 +143,7 @@ const dict = {
     pause: 'Pause',
     addToPlaylist: 'Add to playlist',
     noPlaylists: 'Create a playlist first',
+    deletePlaylist: 'Delete playlist',
   },
 } as const;
 

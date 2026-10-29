@@ -1,17 +1,37 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Search, Library, Download, Plus, Heart, Music, Settings } from 'lucide-react';
+import { Home, Search, Library, Download, Plus, Heart, Music, Settings, Trash2 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { usePlaylistStore } from '../store/playlistStore';
 import { useT } from '../i18n';
 
 export default function Sidebar() {
-  const { currentView, setCurrentView, setSelectedPlaylist } = useAppStore();
-  const { playlists, createPlaylist } = usePlaylistStore();
+  const { currentView, selectedPlaylist, setCurrentView, setSelectedPlaylist } = useAppStore();
+  const { playlists, createPlaylist, deletePlaylist } = usePlaylistStore();
   const t = useT();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
+  const [contextMenu, setContextMenu] = useState<{ id: string; name: string; x: number; y: number } | null>(null);
   const likedPlaylist = playlists.find((p) => p.id === 'liked-songs');
+
+  React.useEffect(() => {
+    const closeMenu = () => setContextMenu(null);
+    window.addEventListener('click', closeMenu);
+    window.addEventListener('blur', closeMenu);
+    return () => {
+      window.removeEventListener('click', closeMenu);
+      window.removeEventListener('blur', closeMenu);
+    };
+  }, []);
+
+  const removePlaylist = (id: string) => {
+    deletePlaylist(id);
+    if (selectedPlaylist?.id === id) {
+      setSelectedPlaylist(null);
+      setCurrentView('library');
+    }
+    setContextMenu(null);
+  };
 
   const openLiked = () => {
     if (likedPlaylist) {
@@ -108,6 +128,16 @@ export default function Sidebar() {
               setSelectedPlaylist(playlist);
               setCurrentView('playlist');
             }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setContextMenu({
+                id: playlist.id,
+                name: playlist.name,
+                x: Math.min(event.clientX, window.innerWidth - 220),
+                y: Math.min(event.clientY, window.innerHeight - 80),
+              });
+            }}
             className="flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-lpotify-gray transition-all"
           >
             <div className="w-8 h-8 bg-lpotify-gray rounded flex items-center justify-center">
@@ -122,6 +152,25 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </div>
+
+      {contextMenu && (
+        <div
+          onClick={(event) => event.stopPropagation()}
+          className="fixed z-[100] w-52 rounded-lg border border-white/10 bg-[#282828] p-1.5 shadow-2xl"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <p className="truncate border-b border-white/10 px-3 py-2 text-xs font-semibold text-lpotify-gray-light">
+            {contextMenu.name}
+          </p>
+          <button
+            onClick={() => removePlaylist(contextMenu.id)}
+            className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-red-400 hover:bg-white/10 hover:text-red-300"
+          >
+            <Trash2 size={15} />
+            <span>{t('deletePlaylist')}</span>
+          </button>
+        </div>
+      )}
 
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
