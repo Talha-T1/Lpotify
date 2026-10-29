@@ -66,11 +66,11 @@ export function useAudioPlayer() {
             q1,
             track.title + ' audio',
             track.artist + ' ' + track.title + ' full song',
-          ], minDur);
+          ], minDur, 600, track.duration);
           if (!full) {
             const q2 = track.title + ' song';
             const q3 = track.artist + ' ' + track.title + ' lyrics';
-            full = await raceResolveQueries([q2, q3, track.title], minDur, 2000);
+            full = await raceResolveQueries([q2, q3, track.title], minDur, 600, track.duration);
           }
           if (full) {
             playTrack = { ...track, audioUrl: full.url, duration: full.duration };

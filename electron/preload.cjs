@@ -2,8 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('lpotify', {
   isElectron: true,
-  resolveAudio: (query) => ipcRenderer.invoke('resolve-audio', query),
-  downloadAudio: (query, fileName, trackId) => ipcRenderer.invoke('download-audio', { query, fileName, trackId }),
+  resolveAudio: (query, duration) => ipcRenderer.invoke('resolve-audio', { query, duration }),
+  downloadAudio: (query, fileName, trackId, duration) => ipcRenderer.invoke('download-audio', { query, fileName, trackId, duration }),
   cacheAudioTemporarily: (query, duration) => ipcRenderer.invoke('cache-audio-temporarily', { query, duration }),
   onDownloadProgress: (callback) => {
     const listener = (_event, payload) => callback(payload);

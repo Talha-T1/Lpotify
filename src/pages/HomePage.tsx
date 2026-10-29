@@ -34,7 +34,7 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (featuredTracks.length > 0) cacheTracksTemporarily(featuredTracks, 2);
+    if (featuredTracks.length > 0) cacheTracksTemporarily(featuredTracks, 3);
   }, [featuredTracks]);
 
   const playTrack = (track: Track, index: number, tracks: Track[]) => {

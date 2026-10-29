@@ -3,10 +3,15 @@ import { Download, Trash2, HardDrive } from 'lucide-react';
 import { useDownloadsStore } from '../store/downloadsStore';
 import TrackList from '../components/TrackList';
 import { useT } from '../i18n';
+import { prewarmLocalAudioUrls } from '../utils/electronBridge';
 
 export default function DownloadsPage() {
   const { downloads, removeDownload } = useDownloadsStore();
   const t = useT();
+
+  React.useEffect(() => {
+    prewarmLocalAudioUrls(downloads.map((track) => track.filePath || '').filter(Boolean));
+  }, [downloads]);
 
   return (
     <div className="p-6">

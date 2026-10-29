@@ -27,7 +27,7 @@ function ytSearch(query) {
     const binary = ytDlpBinary || devYtDlpPath();
     if (!binary || !fs.existsSync(binary)) return reject(new Error('yt-dlp bulunamadı'));
     execFile(binary, [
-      'ytsearch1:' + query,
+      'ytsearch3:' + query,
       '--dump-single-json',
       '--no-warnings',
       '--no-playlist',
@@ -45,6 +45,36 @@ function ytSearch(query) {
       } catch (e) { reject(e); }
     });
   });
+}
+
+function minimumFullDuration(expectedDuration) {
+  const duration = Number(expectedDuration || 0);
+  if (duration > 0 && duration < 45) return 20;
+  if (duration >= 45) return Math.max(45, Math.floor(Math.min(duration * 0.6, 90)));
+  return 60;
+}
+
+function pickSearchResult(raw, expectedDuration) {
+  const entries = raw && raw._type === 'playlist' ? (raw.entries || []) : [raw];
+  const minDuration = minimumFullDuration(expectedDuration);
+  const playable = entries.filter((entry) => entry &&
+    Number(entry.duration || 0) >= minDuration &&
+    (entry.formats || []).some((format) => format.acodec !== 'none' && format.url));
+  if (playable.length === 0) return null;
+  const expected = Number(expectedDuration || 0);
+  if (expected > 0) {
+    playable.sort((a, b) => Math.abs(Number(a.duration) - expected) - Math.abs(Number(b.duration) - expected));
+  }
+  return playable[0];
+}
+
+async function findFullAudioTarget(query, expectedDuration) {
+  const info = pickSearchResult(await ytSearch(query), expectedDuration);
+  if (!info) return null;
+  return {
+    url: info.webpage_url || info.original_url || (info.id ? 'https://www.youtube.com/watch?v=' + info.id : null),
+    duration: Number(info.duration || expectedDuration || 0),
+  };
 }
 
 // yt-dlp çalıştırılabilir dosyası (geliştirme modu için).
@@ -295,8 +325,11 @@ function createWindow() {
  * URL'sini döndürür. Bu akış reklam sunucusundan geçmez → tam şarkı,
  * reklam yok.
  */
-ipcMain.handle('resolve-audio', async (_event, query) => {
+ipcMain.handle('resolve-audio', async (_event, payload) => {
   try {
+    const query = typeof payload === 'string' ? payload : String(payload?.query || '');
+    const expectedDuration = typeof payload === 'string' ? 0 : Number(payload?.duration || 0);
+    if (!query.trim()) return null;
     const temporary = temporaryAudioCache.get(normalizeQuery(query));
     if (temporary && fs.existsSync(temporary.filePath)) {
       return {
@@ -307,18 +340,20 @@ ipcMain.handle('resolve-audio', async (_event, query) => {
         ext: path.extname(temporary.filePath).slice(1) || 'm4a',
       };
     }
-    let info = await ytSearch(query);
-    // ytsearch even with "1" can wrap results in a playlist object
-    if (info && info._type === 'playlist') info = (info.entries || [])[0];
-    // İlk sonuç sesli format vermediyse listedeki diğer sonucu dene.
-    if (info && !((info.formats || []).some((f) => f.acodec !== 'none' && f.url))) {
-      const cached = ytCache.get(query);
-      const raw = cached ? cached.info : null;
-      const alt = raw && raw._type === 'playlist' ? (raw.entries || [])[1] : null;
-      if (alt && (alt.formats || []).some((f) => f.acodec !== 'none' && f.url)) {
-        info = alt;
+    const pendingTemporary = temporaryAudioJobs.get(normalizeQuery(query));
+    if (pendingTemporary) {
+      const prepared = await pendingTemporary;
+      if (prepared?.url) {
+        return {
+          url: prepared.url,
+          title: query,
+          duration: prepared.duration || expectedDuration,
+          thumbnail: '',
+          ext: 'm4a',
+        };
       }
     }
+    const info = pickSearchResult(await ytSearch(query), expectedDuration);
     if (!info) return null;
 
     const formats = (info.formats || []).filter((f) =>
@@ -370,6 +405,8 @@ ipcMain.handle('cache-audio-temporarily', async (_event, payload) => {
   const job = (async () => {
     const binary = ytDlpBinary || devYtDlpPath();
     if (!binary || !fs.existsSync(binary)) return null;
+    const target = await findFullAudioTarget(query, duration);
+    if (!target?.url) return null;
     const id = crypto.createHash('sha1').update(key).digest('hex');
     const outTemplate = path.join(getTemporaryAudioDir(), id + '.%(ext)s');
     const args = [
@@ -379,19 +416,25 @@ ipcMain.handle('cache-audio-temporarily', async (_event, payload) => {
       '--no-check-certificates',
       '--no-playlist',
       '--print', 'after_move:__LP_FILE__%(filepath)s',
+      '--print', 'after_move:__LP_DURATION__%(duration)s',
       '--no-simulate',
-      'ytsearch1:' + query,
+      target.url,
     ];
     const filePath = await new Promise((resolve, reject) => {
       execFile(binary, args, { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
         if (err) return reject(err);
-        const line = String(stdout).split(/\r?\n/).find((value) => value.startsWith('__LP_FILE__'));
-        resolve(line ? line.slice('__LP_FILE__'.length).trim() : null);
+        const lines = String(stdout).split(/\r?\n/);
+        const line = lines.find((value) => value.startsWith('__LP_FILE__'));
+        const durationLine = lines.find((value) => value.startsWith('__LP_DURATION__'));
+        resolve(line ? {
+          filePath: line.slice('__LP_FILE__'.length).trim(),
+          duration: Number(durationLine?.slice('__LP_DURATION__'.length).trim() || target.duration || duration),
+        } : null);
       });
     });
-    if (!filePath || !fs.existsSync(filePath)) return null;
-    temporaryAudioCache.set(key, { filePath, duration });
-    return { url: createLocalAudioUrl(filePath), duration };
+    if (!filePath?.filePath || !fs.existsSync(filePath.filePath)) return null;
+    temporaryAudioCache.set(key, filePath);
+    return { url: createLocalAudioUrl(filePath.filePath), duration: filePath.duration || duration };
   })().catch((err) => {
     console.error('temporary audio cache failed:', err.message);
     return null;
@@ -403,13 +446,15 @@ ipcMain.handle('cache-audio-temporarily', async (_event, payload) => {
 
 /* ---------- Şarkıyı "download mp" klasörüne gerçek dosya olarak indir ---------- */
 ipcMain.handle('download-audio', async (event, payload) => {
-  const { query, fileName, trackId } = payload || {};
+  const { query, fileName, trackId, duration } = payload || {};
   try {
     const binary = ytDlpBinary || devYtDlpPath();
     if (!binary) {
       return { ok: false, error: 'yt-dlp bulunamadı' };
     }
     const dir = getDownloadsDir();
+    const target = await findFullAudioTarget(query, duration);
+    if (!target?.url) return { ok: false, error: 'Tam uzunlukta şarkı bulunamadı' };
     const outTemplate = path.join(dir, safeFileName(fileName || '%(title)s') + '.%(ext)s');
     const args = [
       '-f', 'bestaudio[ext=m4a]/bestaudio/best',
@@ -422,7 +467,7 @@ ipcMain.handle('download-audio', async (event, payload) => {
       '--progress-template', 'download:__LP_PROGRESS__%(progress._percent_str)s',
       '--print', 'after_move:__LP_FILE__%(filepath)s',
       '--no-simulate',
-      'ytsearch1:' + query,
+      target.url,
     ];
     const filePath = await new Promise((resolve, reject) => {
       const child = spawn(binary, args, { windowsHide: true });
@@ -454,7 +499,7 @@ ipcMain.handle('download-audio', async (event, payload) => {
     if (trackId && !event.sender.isDestroyed()) {
       event.sender.send('download-progress', { trackId, percent: 100 });
     }
-    return { ok: true, filePath, dir };
+    return { ok: true, filePath, dir, url: createLocalAudioUrl(filePath) };
   } catch (err) {
     console.error('download failed:', err.message);
     return { ok: false, error: err.message };

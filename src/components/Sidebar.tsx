@@ -104,7 +104,10 @@ export default function Sidebar() {
           <NavLink
             key={playlist.id}
             to="/"
-            onClick={() => setCurrentView('playlist')}
+            onClick={() => {
+              setSelectedPlaylist(playlist);
+              setCurrentView('playlist');
+            }}
             className="flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-lpotify-gray transition-all"
           >
             <div className="w-8 h-8 bg-lpotify-gray rounded flex items-center justify-center">

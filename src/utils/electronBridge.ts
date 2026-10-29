@@ -14,10 +14,10 @@ export interface ResolvedAudio {
 }
 
 /** yt-dlp ile tam uzunlukta, reklamsız ses akışı çözümler. */
-export async function resolveAudioFull(query: string): Promise<ResolvedAudio | null> {
+export async function resolveAudioFull(query: string, duration = 0): Promise<ResolvedAudio | null> {
   if (!isElectron()) return null;
   try {
-    return await (window as any).lpotify.resolveAudio(query);
+    return await (window as any).lpotify.resolveAudio(query, duration);
   } catch {
     return null;
   }
@@ -27,11 +27,14 @@ export async function resolveAudioFull(query: string): Promise<ResolvedAudio | n
 export async function downloadAudioFile(
   query: string,
   fileName: string,
-  trackId: string
-): Promise<{ ok: boolean; filePath?: string; dir?: string; error?: string }> {
+  trackId: string,
+  duration = 0
+): Promise<{ ok: boolean; filePath?: string; dir?: string; url?: string; error?: string }> {
   if (!isElectron()) return { ok: false, error: 'Yalnızca uygulama içinde çalışır' };
   try {
-    return await (window as any).lpotify.downloadAudio(query, fileName, trackId);
+    const result = await (window as any).lpotify.downloadAudio(query, fileName, trackId, duration);
+    if (result?.filePath && result?.url) localAudioUrlCache.set(result.filePath, result.url);
+    return result;
   } catch (e: any) {
     return { ok: false, error: e?.message || 'İndirme başarısız' };
   }
@@ -92,14 +95,26 @@ export function onTaskbarPlayerAction(
 /** Yerel dosya yolunu <audio>/Howler ile çalınabilir adrese çevirir.
  *  Electron'da güvenilir yol: dahili yerel sunucu (Range destekli).
  *  Tarayıcıda: file:// adresi döner (yine de çoğunlukla kullanılmaz). */
+const localAudioUrlCache = new Map<string, string>();
+
 export async function getLocalAudioUrl(p: string): Promise<string> {
+  const cached = localAudioUrlCache.get(p);
+  if (cached) return cached;
   if (isElectron()) {
     try {
       const url = await (window as any).lpotify.localAudioUrl(p);
-      if (url) return url;
+      if (url) {
+        localAudioUrlCache.set(p, url);
+        return url;
+      }
     } catch { /* fall through */ }
   }
   return filePathToUrl(p);
+}
+
+/** İndirilenler sayfasındaki yerel adresleri tıklamadan önce hazırlar. */
+export function prewarmLocalAudioUrls(paths: string[]): void {
+  paths.filter(Boolean).forEach((path) => { void getLocalAudioUrl(path); });
 }
 
 /** Yerel dosya yolunu <audio>/Howler ile çalınabilir file:// adresine çevirir. */

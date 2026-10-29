@@ -5,10 +5,14 @@ import { usePlayerStore } from '../store/playerStore';
 import TrackList from '../components/TrackList';
 import { formatDuration } from '../utils/musicApi';
 import { useT } from '../i18n';
+import { usePlaylistStore } from '../store/playlistStore';
 
 export default function PlaylistPage() {
   const t = useT();
-  const { selectedPlaylist, setCurrentView } = useAppStore();
+  const { selectedPlaylist: selectedPlaylistSnapshot, setCurrentView } = useAppStore();
+  const playlists = usePlaylistStore((state) => state.playlists);
+  const selectedPlaylist = playlists.find((playlist) => playlist.id === selectedPlaylistSnapshot?.id)
+    || selectedPlaylistSnapshot;
   const { setQueue, setCurrentTrack, setIsPlaying } = usePlayerStore();
 
   if (!selectedPlaylist) {

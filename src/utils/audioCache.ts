@@ -73,7 +73,8 @@ export function minDurationFor(track: Track): number {
 export function raceResolveQueries(
   queries: string[],
   minDuration = 60,
-  staggerMs = 2500
+  staggerMs = 600,
+  expectedDuration = minDuration
 ): Promise<{ url: string; duration: number } | null> {
   return new Promise((resolve) => {
     let settled = false;
@@ -89,7 +90,7 @@ export function raceResolveQueries(
             if (isAcceptable(cached.duration, minDuration)) return done(cached);
             return;
           }
-          const r = await resolveAudioFull(query);
+          const r = await resolveAudioFull(query, expectedDuration);
           if (r && r.url && !settled && isAcceptable(Math.round(r.duration), minDuration)) {
             const full = { url: r.url, duration: Math.round(r.duration), at: Date.now() } as any;
             resolvedCache.set(query, full);
@@ -100,7 +101,7 @@ export function raceResolveQueries(
       }, i * staggerMs);
     });
     // Tüm denemeler bittiğinde askıda kalma — null ile sonuçlan.
-    setTimeout(() => done(null), queries.length * staggerMs + 7000);
+    setTimeout(() => done(null), queries.length * staggerMs + 5000);
   });
 }
 
@@ -121,7 +122,7 @@ export async function prefetchTrack(track: Track): Promise<void> {
       return c && isAcceptable(c.duration, minDur);
     })) return;
     try {
-      const r = await raceResolveQueries(queries, minDur);
+      const r = await raceResolveQueries(queries, minDur, 600, track.duration);
       if (r) {
         resolvedCache.set(queries[0], r);
         resolvedCache.set(cacheKey, r);
@@ -144,7 +145,7 @@ export async function prefetchTrack(track: Track): Promise<void> {
 /** Bir şarkı listesini sırayla (1 sn arayla) önceden yükler — kuyruk kurulunca çağrılır. */
 export function prefetchMany(tracks: Track[], count = 4): void {
   tracks.slice(0, count).forEach((track, i) => {
-    setTimeout(() => { prefetchTrack(track); }, i * 1000);
+    setTimeout(() => { prefetchTrack(track); }, i * 250);
   });
 }
 
@@ -170,8 +171,8 @@ export function cacheTrackTemporarily(track: Track): Promise<void> {
   return job;
 }
 
-/** Listeyi varsayılan olarak en fazla iki eşzamanlı indirmeyle arka planda hazırlar. */
-export function cacheTracksTemporarily(tracks: Track[], concurrency = 2): void {
+/** Listeyi varsayılan olarak en fazla üç eşzamanlı indirmeyle arka planda hazırlar. */
+export function cacheTracksTemporarily(tracks: Track[], concurrency = 3): void {
   const queue = tracks.filter((track) => track && !track.filePath);
   let cursor = 0;
   const worker = async () => {

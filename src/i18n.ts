@@ -72,6 +72,8 @@ const dict = {
     next: 'Sıradaki Şarkı',
     play: 'Çal',
     pause: 'Durdur',
+    addToPlaylist: 'Çalma listesine ekle',
+    noPlaylists: 'Önce bir çalma listesi oluşturun',
   },
   en: {
     home: 'Home',
@@ -138,6 +140,8 @@ const dict = {
     next: 'Next Track',
     play: 'Play',
     pause: 'Pause',
+    addToPlaylist: 'Add to playlist',
+    noPlaylists: 'Create a playlist first',
   },
 } as const;
 
