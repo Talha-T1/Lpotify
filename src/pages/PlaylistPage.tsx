@@ -61,9 +61,13 @@ export default function PlaylistPage() {
           </div>
           <div>
             <p className="text-sm font-bold text-white uppercase tracking-wider">{t('playlistLabel')}</p>
-            <h1 className="text-5xl font-black text-white mt-2 mb-4">{selectedPlaylist.name}</h1>
-            {selectedPlaylist.description && (
-              <p className="text-lpotify-gray-light text-sm mb-2">{selectedPlaylist.description}</p>
+            <h1 className="text-5xl font-black text-white mt-2 mb-4">
+              {selectedPlaylist.id === 'liked-songs' ? t('likedSongs') : selectedPlaylist.name}
+            </h1>
+            {(selectedPlaylist.description || selectedPlaylist.id === 'liked-songs') && (
+              <p className="text-lpotify-gray-light text-sm mb-2">
+                {selectedPlaylist.id === 'liked-songs' ? t('likedSongsDesc') : selectedPlaylist.description}
+              </p>
             )}
             <div className="flex items-center gap-1 text-sm text-lpotify-gray-light">
           <span className="font-semibold text-white">{selectedPlaylist.tracks.length} {t('songs')}</span>

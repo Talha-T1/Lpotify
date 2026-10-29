@@ -96,3 +96,30 @@ fs.mkdirSync(out, { recursive: true });
   writePng(path.join(out, name), size, size, render(size, mask));
   console.log('Yazildi:', name);
 });
+
+// Android launcher ikonlari (ic_launcher.png + ic_launcher_round.png)
+const res = path.join(__dirname, '..', 'android', 'app', 'src', 'main', 'res');
+const densities = [['mdpi', 48], ['hdpi', 72], ['xhdpi', 96], ['xxhdpi', 144], ['xxxhdpi', 192]];
+for (const [dpi, size] of densities) {
+  const dir = path.join(res, 'mipmap-' + dpi);
+  fs.mkdirSync(dir, { recursive: true });
+  const rgba = render(size, false);
+  writePng(path.join(dir, 'ic_launcher.png'), size, size, rgba);
+  writePng(path.join(dir, 'ic_launcher_round.png'), size, size, rgba);
+  // Adaptive icon foreground: saf saydam zemin uzerinde siyah yaylar (%66 guvenli bolge)
+  const S = size / 2; // render 100x100 uzayinda; foreground icin yaylari kucultup ortala
+  const fg = Buffer.alloc(size * size * 4);
+  const sc = (size / 100) * 0.66;
+  const off = (size - 100 * sc) / 2 / sc;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = x / sc + off, v = y / sc + off;
+      let ink = 0;
+      for (const a of arcs) ink = Math.max(ink, clamp01(a.w / 2 + 0.5 - distToQuad(u, v, a)));
+      const idx = (y * size + x) * 4;
+      fg[idx + 3] = Math.round(255 * ink); // siyah, alfa ile
+    }
+  }
+  writePng(path.join(dir, 'ic_launcher_foreground.png'), size, size, fg);
+  console.log('Android ikonu:', dpi, size + 'px');
+}

@@ -46,6 +46,26 @@ export function openDownloadsFolder(): Promise<boolean> {
   return (window as any).lpotify.openDownloadsFolder();
 }
 
+export type TaskbarPlayerAction = 'toggle-like' | 'previous' | 'play-pause' | 'next';
+
+export function updateTaskbarControls(state: {
+  hasTrack: boolean;
+  isPlaying: boolean;
+  isLiked: boolean;
+}): void {
+  try { (window as any).lpotify?.updateTaskbarControls?.(state); } catch { /* ignore */ }
+}
+
+export function onTaskbarPlayerAction(
+  callback: (action: TaskbarPlayerAction) => void
+): () => void {
+  try {
+    return (window as any).lpotify?.onTaskbarPlayerAction?.(callback) || (() => {});
+  } catch {
+    return () => {};
+  }
+}
+
 /** Yerel dosya yolunu <audio>/Howler ile çalınabilir adrese çevirir.
  *  Electron'da güvenilir yol: dahili yerel sunucu (Range destekli).
  *  Tarayıcıda: file:// adresi döner (yine de çoğunlukla kullanılmaz). */

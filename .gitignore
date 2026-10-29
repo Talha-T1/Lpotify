@@ -18,3 +18,10 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+
+# Desktop-only repository: do not publish Android / AI Studio artifacts
+.aistudio/
+android/
+capacitor.config.ts
+metadata.json
+*.apk

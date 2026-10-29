@@ -1,4 +1,5 @@
 import { resolveAudioFull, isElectron } from './electronBridge';
+import { resolveTrack } from './musicApi';
 import { Track } from '../types';
 
 /**
@@ -10,8 +11,14 @@ import { Track } from '../types';
  */
 export const resolvedCache = new Map<string, { url: string; duration: number }>();
 
-const CACHE_KEY = 'lpotify-resolved-v1';
+const CACHE_KEY = 'lpotify-resolved-v2';
 const CACHE_TTL = 4 * 60 * 60 * 1000; // 4 saat
+
+// Local proxy URLs contain a random port and token. They are valid only for
+// the current Electron session and must never be restored after a restart.
+function isPersistentUrl(url: string): boolean {
+  return !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(url);
+}
 
 function persistCache() {
   try {
@@ -19,7 +26,9 @@ function persistCache() {
     const now = Date.now();
     resolvedCache.forEach((v, k) => {
       const at = (v as any).at || now;
-      if (now - at < CACHE_TTL) entries.push([k, { ...(v as any), at }]);
+      if (now - at < CACHE_TTL && isPersistentUrl(v.url)) {
+        entries.push([k, { ...(v as any), at }]);
+      }
     });
     localStorage.setItem(CACHE_KEY, JSON.stringify(entries));
   } catch { /* storage full */ }
@@ -33,13 +42,16 @@ try {
     const now = Date.now();
     if (Array.isArray(entries)) {
       entries.forEach(([k, v]: [string, any]) => {
-        if (v && v.url && now - (v.at || 0) < CACHE_TTL) {
+        if (v && v.url && isPersistentUrl(v.url) && now - (v.at || 0) < CACHE_TTL) {
           resolvedCache.set(k, { url: v.url, duration: v.duration, at: v.at } as any);
         }
       });
     }
   }
 } catch { /* ignore */ }
+
+// Remove the old cache version that could contain dead local proxy addresses.
+try { localStorage.removeItem('lpotify-resolved-v1'); } catch { /* ignore */ }
 
 /** Sonucun "gerçek şarkı" olduğuna karar ver: 30 sn'lik önizlemeleri ele. */
 function isAcceptable(duration: number, minDuration: number): boolean {
@@ -94,20 +106,39 @@ export function raceResolveQueries(
 
 /** Şarkıyı (varsa) çözümlenmiş akışıyla önceden yükle — hover/prefetch için. */
 export async function prefetchTrack(track: Track): Promise<void> {
-  if (!track || track.filePath || !isElectron()) return;
-  const minDur = minDurationFor(track);
-  const queries = [
-    track.artist + ' ' + track.title,
-    track.title + ' audio',
-  ];
-  if (queries.some((q) => {
-    const c = resolvedCache.get(q);
-    return c && isAcceptable(c.duration, minDur);
-  })) return;
-  try {
-    const r = await raceResolveQueries(queries, minDur);
-    if (r) resolvedCache.set(queries[0], r);
-  } catch { /* sessizce geç */ }
+  if (!track || track.filePath) return;
+  const cacheKey = track.id || (track.artist + ' ' + track.title);
+  if (resolvedCache.has(cacheKey)) return;
+
+  if (isElectron()) {
+    const minDur = minDurationFor(track);
+    const queries = [
+      track.artist + ' ' + track.title,
+      track.title + ' audio',
+    ];
+    if (queries.some((q) => {
+      const c = resolvedCache.get(q);
+      return c && isAcceptable(c.duration, minDur);
+    })) return;
+    try {
+      const r = await raceResolveQueries(queries, minDur);
+      if (r) {
+        resolvedCache.set(queries[0], r);
+        resolvedCache.set(cacheKey, r);
+        persistCache();
+      }
+    } catch { /* sessizce geç */ }
+  } else {
+    // Web tarayıcı: arka planda tam parça çözümlemesini yap ve önbelleğe al
+    try {
+      const resolved = await resolveTrack(track);
+      if (resolved && resolved.audioUrl) {
+        const entry = { url: resolved.audioUrl, duration: resolved.duration, at: Date.now() };
+        resolvedCache.set(cacheKey, entry);
+        persistCache();
+      }
+    } catch { /* sessizce geç */ }
+  }
 }
 
 /** Bir şarkı listesini sırayla (1 sn arayla) önceden yükler — kuyruk kurulunca çağrılır. */

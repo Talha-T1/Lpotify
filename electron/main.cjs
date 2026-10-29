@@ -1,10 +1,11 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, nativeImage } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
 
-// Packaged: spawn the bundled yt-dlp.exe directly (no node module needed).
-// Dev: use youtube-dl-exec package.
+// Packaged: spawn the bundled yt-dlp.exe directly.
+// Development: use the same executable from youtube-dl-exec so both builds
+// resolve streams with identical options.
 const ytDlpBinary = app.isPackaged
   ? path.join(process.resourcesPath, 'yt-dlp', 'yt-dlp.exe')
   : undefined;
@@ -22,31 +23,26 @@ function ytSearch(query) {
     return Promise.resolve(cached.info);
   }
   return new Promise((resolve, reject) => {
-    if (ytDlpBinary) {
-      execFile(ytDlpBinary, ['ytsearch1:' + query, '--dump-single-json', '--no-warnings',
-        // Android istemcisi imza çözümlemesi gerektirmez → çok daha hızlı sonuç.
-        '--extractor-args', 'youtube:player_client=android,web_safari',
-      ], {
-        maxBuffer: 64 * 1024 * 1024,
-      }, (err, stdout) => {
-        if (err) return reject(err);
-        try {
-          const info = JSON.parse(stdout);
-          ytCache.set(query, { info, at: Date.now() });
-          resolve(info);
-        } catch (e) { reject(e); }
-      });
-    } else {
+    const binary = ytDlpBinary || devYtDlpPath();
+    if (!binary || !fs.existsSync(binary)) return reject(new Error('yt-dlp bulunamadı'));
+    execFile(binary, [
+      'ytsearch1:' + query,
+      '--dump-single-json',
+      '--no-warnings',
+      '--no-playlist',
+      // Antivirus HTTPS inspection can otherwise make resolution fail while
+      // the same song still downloads through a different network backend.
+      '--no-check-certificates',
+    ], {
+      maxBuffer: 64 * 1024 * 1024,
+    }, (err, stdout) => {
+      if (err) return reject(err);
       try {
-        // lazy require so a missing dev package never crashes packaged apps
-        const ytdl = require('youtube-dl-exec');
-        ytdl('ytsearch1:' + query, { dumpSingleJson: true, noWarnings: true })
-          .then((info) => {
-            ytCache.set(query, { info, at: Date.now() });
-            resolve(info);
-          }, reject);
+        const info = JSON.parse(stdout);
+        ytCache.set(query, { info, at: Date.now() });
+        resolve(info);
       } catch (e) { reject(e); }
-    }
+    });
   });
 }
 
@@ -74,6 +70,52 @@ function safeFileName(name) {
 }
 
 let mainWindow = null;
+
+/* ---------- Windows görev çubuğu küçük önizleme düğmeleri ---------- */
+const taskbarIconData = {
+  heart: 'iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAFlSURBVEhL7ZWhcgJBEESRkZHIyMjIyMhIJJJPQCJxkUgkn4CMjIyMjIxEInHdVF/NpmYb7g6OisuT27MzvXsze6PRP7cC4JnkguRDXid5T3JJ8iWv9xIbFwDeARwYAPgpRRQD4KtooX8CeCP56DkrAKzyxkwUefLkGWme8xeS4+IawAbAVGuRdG+JDgBe48QTMzbx3A0l6JyLXKQk9xgA27b9lfs2B1Fkdy65kN56iugUVf+uBIPkna9l1ByRZ1sJJGch7CrhSlKBVSXY8caVeAXpO01dk9j5DfrQnCSTp/OgYQlx6dolyJg2y6hrDalNd7oy17uILmwGUEZdb7Be37e1oxP7NOVlRk7vv6C7K8HBzGMyeuyyqYseP3/M9Ih5jFDx9LTI1OmHbUMDVUY/EmzykJXBDE1mhrU2gHVK9BGnU7GyJhOd090LgHlKmP8Ra48djDrDks895mb0+4wZGTTpf8IRAUesnTafJqUAAAAASUVORK5CYII=',
+  liked: 'iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAD4SURBVEhL7dQ9EgFBEIZhodARhEKhIwiFQqHQEdzAERzBMYRCoVAolL2temvQ+9mxPyVQypOZ7f5m1vZur/f39cxsaGZjXXe+7td1vRYwBbbAyZ4WscZ/3y94XaqfxppKZtYHziE4KjaJ4VHq62tmCbDSxshPqmuR92vmQ83pG3l7F7lbbwtYanbBH5IWd1QaiAczG2hlR5VjXZDRbA24amYJsNOmNoC9Zpb4A9Kmltaa+aLuXcgBNpqVBcz9/9SQnOxovgNMgIuGRekQM+1tzMxGuclKm+dHsil/P4CDhB87fapz0neqGGEfRd9Uaz4ijXH1x+wn3QD36pQym/QoiwAAAABJRU5ErkJggg==',
+  prev: 'iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAADOSURBVEhL7ZSxDcIwEEVTUlIyAiUlZUrGYAzKdIzBGIxASckIlJR07yNHTnRy7MQxDRJ5kpt/X36SdXJVLfwfkmpJjT91OE8haR1mUfzFHU04D3EXA5ecbsscAbAHnjndnhyBpBVwNr1kd8CUQNIWuJtOshtlTCDpBLzN3FIukLQBriaPUSaQtANeJktRJnAZcDDbkqJc4HO372PP9J3AzI+JJxt0o0wJHH5Vb6aX7A7IEXS4tc3t9swROPx38cjptpT8pu7rcOsc5gu/wQe8xTIVcGGSAgAAAABJRU5ErkJggg==',
+  play: 'iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAACZSURBVEhL7dSxDYMwEEZhRqBkjJSMkDEYJZtkjIxEyQbvR5Zs6XRKjIUvEgVfacu8u4ZhuF2apMmfhZL0Aj5/C6WAJAGbpMXfdyuBInwbH8iRuG2+BYqQbWqBpHubo0BxepvWQJK3efhvVLUGgBV4+veHWgLAW9Lo3zapBU5Pbf0KdE1t+UDI1JYNhE1t5b9p7NQWMIdPffN2gg7JERf3KusAAAAASUVORK5CYII=',
+  pause: 'iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAABdSURBVEhL7dShEQAgDARBSqO0dP4YRNyCQ7AzqJu8ZIzvWUlmkmpv3nTaR13ddNKAOmlAnTSgThpQJw2okwbUSQPqpAF10oA6aUCdNKBOGlAnDaiTBtRJ/736d2wBxN97x6hDfmMAAAAASUVORK5CYII=',
+  next: 'iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAC/SURBVEhL7ZSxDcIwEEVTUlIyAiUlZUrGYAzKdIzBGIyQERiBkpLufXSSjaKTg5Ft0ZAnufF9+0nW+bpu4X+RtPF7c0jqJQ1h9b6exMLA9RtRuDgy+HqSeAh4AAdfn1IliAAXSWufM5oIDOAG7DPZckEEOH/I1gsMYJS0TWTbCAzgOWnRSBuBdZekYyJbLwjP8/4fzQThSU6ZbJnAWlTSzueMaoG1paSVz0SKBcA9NyaMIoH92LnR4Cmapgs/4wVgizaKY99qpwAAAABJRU5ErkJggg==',
+};
+const taskbarIcons = new Map();
+
+function getTaskbarIcon(name) {
+  if (!taskbarIcons.has(name)) {
+    taskbarIcons.set(name, nativeImage.createFromDataURL('data:image/png;base64,' + taskbarIconData[name]));
+  }
+  return taskbarIcons.get(name);
+}
+
+function sendPlayerAction(action) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('taskbar-player-action', action);
+  }
+}
+
+function updateTaskbarButtons(state = {}) {
+  if (process.platform !== 'win32' || !mainWindow || mainWindow.isDestroyed()) return;
+  if (!state.hasTrack) {
+    mainWindow.setThumbarButtons([]);
+    return;
+  }
+  mainWindow.setThumbarButtons([
+    {
+      tooltip: state.isLiked ? 'Favorilerden çıkar' : 'Favorilere ekle',
+      icon: getTaskbarIcon(state.isLiked ? 'liked' : 'heart'),
+      click: () => sendPlayerAction('toggle-like'),
+    },
+    { tooltip: 'Önceki şarkı', icon: getTaskbarIcon('prev'), click: () => sendPlayerAction('previous') },
+    {
+      tooltip: state.isPlaying ? 'Duraklat' : 'Oynat',
+      icon: getTaskbarIcon(state.isPlaying ? 'pause' : 'play'),
+      click: () => sendPlayerAction('play-pause'),
+    },
+    { tooltip: 'Sonraki şarkı', icon: getTaskbarIcon('next'), click: () => sendPlayerAction('next') },
+  ]);
+}
 
 /* ---------- Yerel ses proxy sunucusu ----------
  * googlevideo URL'leri doğrudan <audio> ile çekildiğinde
@@ -117,16 +159,28 @@ function startProxy() {
       req.on('close', () => {});
       return;
     }
+    const sourceHeaders = entry.headers || {};
     const headers = {
-      'User-Agent': entry.headers['User-Agent'] || 'Mozilla/5.0',
-      ...(entry.headers['Range'] ? { Range: req.headers.range } : {}),
+      'User-Agent': sourceHeaders['User-Agent'] || sourceHeaders['user-agent'] || 'Mozilla/5.0',
+      'Accept': sourceHeaders.Accept || sourceHeaders.accept || '*/*',
+      ...(sourceHeaders.Referer || sourceHeaders.referer ? { Referer: sourceHeaders.Referer || sourceHeaders.referer } : {}),
+      ...(sourceHeaders.Origin || sourceHeaders.origin ? { Origin: sourceHeaders.Origin || sourceHeaders.origin } : {}),
+      ...(req.headers.range ? { Range: req.headers.range } : {}),
     };
-    const upstream = require('https').request(entry.url, { headers }, (uRes) => {
+    const protocol = new URL(entry.url).protocol === 'http:' ? require('http') : require('https');
+    const upstream = protocol.request(entry.url, {
+      method: req.method,
+      headers,
+      // Limited to the media URL returned by yt-dlp. This keeps playback
+      // working behind antivirus HTTPS inspection without changing Electron globally.
+      rejectUnauthorized: false,
+    }, (uRes) => {
       res.writeHead(uRes.statusCode || 500, {
         'Content-Type': uRes.headers['content-type'] || 'audio/mp4',
         ...(uRes.headers['content-length'] ? { 'Content-Length': uRes.headers['content-length'] } : {}),
         ...(uRes.headers['content-range'] ? { 'Content-Range': uRes.headers['content-range'] } : {}),
         'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*',
       });
       uRes.pipe(res);
     });
@@ -191,7 +245,9 @@ ipcMain.handle('resolve-audio', async (_event, query) => {
     }
     if (!info) return null;
 
-    const formats = (info.formats || []).filter((f) => f.acodec !== 'none' && f.url);
+    const formats = (info.formats || []).filter((f) =>
+      f.acodec !== 'none' && f.url && (f.protocol === 'https' || f.protocol === 'http')
+    );
     if (formats.length === 0) return null;
 
     // Önce salt sesli formatlar (vcodec none); hiç yoksa sesi olan herhangi
@@ -237,6 +293,7 @@ ipcMain.handle('download-audio', async (_event, payload) => {
       '-f', 'bestaudio[ext=m4a]/bestaudio/best',
       '-o', outTemplate,
       '--no-warnings',
+      '--no-check-certificates',
       '--no-playlist',
       '--print', 'after_move:filepath',
       '--no-simulate',
@@ -280,6 +337,10 @@ ipcMain.handle('local-audio-url', (_event, filePath) => {
 
 ipcMain.handle('open-downloads-folder', () => {
   try { shell.openPath(getDownloadsDir()); return true; } catch { return false; }
+});
+
+ipcMain.on('taskbar-player-state', (_event, state) => {
+  updateTaskbarButtons(state);
 });
 
 app.whenReady().then(() => {

@@ -11,9 +11,11 @@ import PlaylistPage from './pages/PlaylistPage';
 import SettingsPage from './pages/SettingsPage';
 import { useAppStore } from './store/appStore';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 export default function App() {
   useAudioPlayer();
+  const { notification } = useKeyboardShortcuts();
   const { currentView } = useAppStore();
   const navigate = useNavigate();
 
@@ -50,6 +52,15 @@ export default function App() {
       {/* Mobil alt gezinme çubuğu (lg altı) */}
       <BottomNav />
       <Player />
+
+      {/* Kısayol Bildirim Rozeti (Fn / F7 / F8 / Space vb.) */}
+      {notification && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-slide-up">
+          <div className="bg-[#181818]/95 backdrop-blur-md border border-white/10 text-white font-semibold text-sm px-4 py-2 rounded-full shadow-2xl flex items-center gap-2">
+            <span>{notification}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

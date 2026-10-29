@@ -26,6 +26,7 @@ export function useAudioPlayer() {
     setDuration,
     setIsPlaying,
     nextTrack,
+    prevTrack,
     repeat,
   } = usePlayerStore();
 
@@ -37,24 +38,29 @@ export function useAudioPlayer() {
       howlRef.current = null;
     }
 
-    // Prefer a locally cached copy (real offline playback) over the network URL.
-    let src = track.audioUrl;
+    let src = track.audioUrl || '';
     let playTrack = track;
-    try {
-      if (track.filePath) {
-        // "download mp" klasörüne indirilmiş gerçek dosya: internete hiç gerek yok.
-        // Dahili yerel sunucu üzerinden çal — hem güvenilir hem Range destekli.
+
+    // 1. ÖNCELİK: İndirilmiş gerçek dosya (Electron)
+    if (track.filePath) {
+      try {
         src = await getLocalAudioUrl(track.filePath);
-      } else if (isElectron()) {
-        // Electron'da eski oturumdan kalma akış URL'leri (proxy token'lı) ölmüş
-        // olur → her zaman taze çözümleme yap, bayat URL'ye güvenme.
-        const cachedUrl = await getCachedTrackBlobUrl(track.id);
-        if (cachedUrl) {
-          src = cachedUrl;
-        } else {
-          // In Electron: yt-dlp resolves the full ad-free audio stream.
-          // Süre kontrolüyle 30 sn önizlemeleri reddediyoruz; ilk tur bulunamazsa
-          // alternatif sorgularla ikinci tur denenir (hız için yarışmalı).
+      } catch { /* stay online */ }
+    } else {
+      // 2. ÖNCELİK: IndexedDB Çevrimdışı Önbellek Blobu (Web ve Masaüstü)
+      // Bu sayede indirilen parçalar ağa gitmeden, sıfır gecikmeyle anında başlar.
+      try {
+        const cachedBlobUrl = await getCachedTrackBlobUrl(track.id);
+        if (cachedBlobUrl) {
+          src = cachedBlobUrl;
+        }
+      } catch { /* fallback to network */ }
+    }
+
+    // 3. ÖNCELİK: Eğer yerel veya çevrimdışı blob yoksa ağ akışını hazırla
+    if (src === track.audioUrl || !src) {
+      if (isElectron()) {
+        try {
           const minDur = minDurationFor(track);
           const q1 = track.artist + ' ' + track.title;
           let full = await raceResolveQueries([
@@ -72,25 +78,51 @@ export function useAudioPlayer() {
             src = full.url;
           } else {
             playTrack = await resolveTrack(track);
-            src = playTrack.audioUrl;
+            // Deezer's catalog URL is only a 30-second preview. If a full
+            // source cannot be resolved, fail clearly instead of pretending
+            // the preview is the whole song.
+            src = playTrack.source === 'deezer' && playTrack.audioUrl === track.audioUrl
+              ? ''
+              : playTrack.audioUrl;
           }
+        } catch { /* stay with preview */ }
+      } else {
+        // Web tarayıcısı:
+        // Eğer bellekte veya kalıcı önbellekte tam sürüm varsa hemen kullan
+        const cacheKey = track.id || (track.artist + ' ' + track.title);
+        const inMemory = resolvedCache.get(cacheKey) || resolvedCache.get(track.id);
+        if (inMemory && inMemory.url) {
+          src = inMemory.url;
+        } else if (!src) {
+          // Eğer audioUrl boşsa (örn. bazı listeler) tam parçayı çöz
+          try {
+            const resolved = await resolveTrack(track);
+            if (resolved.audioUrl) {
+              src = resolved.audioUrl;
+              resolvedCache.set(cacheKey, { url: resolved.audioUrl, duration: resolved.duration });
+            }
+          } catch { /* ignore */ }
         }
       }
-    } catch {
-      // stay online
     }
 
     // Çözümleme sürerken kullanıcı başka şarkıya geçtiyse bu yüklemeyi tamamen bırak.
     if (token !== loadTokenRef.current) return null;
 
+    if (!src) {
+      console.warn('No playable audio source found for track:', track.title);
+      setIsPlaying(false);
+      return null;
+    }
+
     const howl: Howl = new Howl({
       src: [src],
       html5: true,
       volume: volume,
-      format: ['mp3', 'ogg', 'wav', 'm4a', 'flac'],
+      format: ['mp3', 'ogg', 'wav', 'm4a', 'flac', 'webm'],
       onload: () => {
         if (howlRef.current !== howl) return;
-        setDuration(howl.duration());
+        setDuration(howl.duration() || track.duration || 0);
         // Yükleme bitmeden yapılmış bir sarma varsa şimdi uygula.
         if (pendingSeekRef.current != null) {
           try { howl.seek(pendingSeekRef.current); } catch { /* noop */ }
@@ -117,16 +149,37 @@ export function useAudioPlayer() {
           nextTrack();
         }
       },
-      onloaderror: (_id, _err) => {
+      onloaderror: async (_id, err) => {
         if (howlRef.current !== howl) return;
-        console.error('Error loading track:', track.title);
-        // Sonsuz ilerlemeyi önle: hiç çalmamışsa listeyi ilerletme.
-        if (hasPlayedRef.current) {
-          hasPlayedRef.current = false;
-          nextTrack();
-        } else {
-          setIsPlaying(false);
+        console.error('Error loading audio track:', track.title, err);
+        // Eğer mevcut URL yüklenemediyse alternatif bir çözüm dene,
+        // fakat kontrolsüzce bir sonraki şarkıya ATLAMA (atlama döngüsünü engeller).
+        if (!hasPlayedRef.current && token === loadTokenRef.current) {
+          try {
+            const alt = await resolveTrack(track);
+            const isDeezerPreview = alt.source === 'deezer' && alt.audioUrl === track.audioUrl;
+            if (!isDeezerPreview && alt.audioUrl && alt.audioUrl !== src && token === loadTokenRef.current) {
+              const retryHowl = new Howl({
+                src: [alt.audioUrl],
+                html5: true,
+                volume: volume,
+                format: ['mp3', 'ogg', 'wav', 'm4a', 'flac', 'webm'],
+                onplay: () => {
+                  hasPlayedRef.current = true;
+                  setIsPlaying(true);
+                },
+                onend: () => nextTrack(),
+                onloaderror: () => {
+                  setIsPlaying(false);
+                },
+              });
+              howlRef.current = retryHowl;
+              retryHowl.play();
+              return;
+            }
+          } catch { /* fallback failed */ }
         }
+        setIsPlaying(false);
       },
       onplayerror: (_id, _err) => {
         if (howlRef.current !== howl) return;
@@ -233,6 +286,58 @@ export function useAudioPlayer() {
     window.addEventListener('player-seek', handleSeekEvent);
     return () => window.removeEventListener('player-seek', handleSeekEvent);
   }, [seekTo]);
+
+  // Windows taskbar hover, tarayıcı medya kontrolleri, klavye medya tuşları ve kilit ekranı için MediaSession API
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    if (currentTrack) {
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: currentTrack.title,
+          artist: currentTrack.artist,
+          album: currentTrack.album || 'Lpotify',
+          artwork: [
+            { src: currentTrack.coverUrl || '/icons/icon-192.png', sizes: '96x96', type: 'image/jpeg' },
+            { src: currentTrack.coverUrl || '/icons/icon-192.png', sizes: '128x128', type: 'image/jpeg' },
+            { src: currentTrack.coverUrl || '/icons/icon-192.png', sizes: '256x256', type: 'image/jpeg' },
+            { src: currentTrack.coverUrl || '/icons/icon-512.png', sizes: '512x512', type: 'image/jpeg' },
+          ],
+        });
+      } catch { /* ignore */ }
+
+      // Pencere başlığını Spotify tarzı dinamik güncelle: "Şarkı Adı • Sanatçı"
+      document.title = `${currentTrack.title} • ${currentTrack.artist}`;
+    } else {
+      document.title = 'Lpotify';
+    }
+
+    try {
+      navigator.mediaSession.setActionHandler('play', () => {
+        setIsPlaying(true);
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        setIsPlaying(false);
+      });
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        prevTrack();
+      });
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        nextTrack();
+      });
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime != null) {
+          seekTo(details.seekTime);
+        }
+      });
+    } catch { /* ignore */ }
+  }, [currentTrack, setIsPlaying, prevTrack, nextTrack, seekTo]);
+
+  useEffect(() => {
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    }
+  }, [isPlaying]);
 
   return { seekTo };
 }
