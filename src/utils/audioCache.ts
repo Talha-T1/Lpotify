@@ -11,7 +11,7 @@ import { Track } from '../types';
  */
 export const resolvedCache = new Map<string, { url: string; duration: number }>();
 
-const CACHE_KEY = 'lpotify-resolved-v2';
+const CACHE_KEY = 'lpotify-resolved-v3';
 const CACHE_TTL = 4 * 60 * 60 * 1000; // 4 saat
 
 // Local proxy URLs contain a random port and token. They are valid only for
@@ -51,7 +51,10 @@ try {
 } catch { /* ignore */ }
 
 // Remove the old cache version that could contain dead local proxy addresses.
-try { localStorage.removeItem('lpotify-resolved-v1'); } catch { /* ignore */ }
+try {
+  localStorage.removeItem('lpotify-resolved-v1');
+  localStorage.removeItem('lpotify-resolved-v2');
+} catch { /* ignore */ }
 
 /** Sonucun "gerçek şarkı" olduğuna karar ver: 30 sn'lik önizlemeleri ele. */
 function isAcceptable(duration: number, minDuration: number): boolean {
@@ -156,7 +159,6 @@ export function cacheTrackTemporarily(track: Track): Promise<void> {
   if (!isElectron() || !track || track.filePath) return Promise.resolve();
   const cacheKey = track.id || (track.artist + ' ' + track.title);
   const query = track.artist + ' ' + track.title;
-  if (resolvedCache.has(cacheKey) || resolvedCache.has(query)) return Promise.resolve();
   if (temporaryJobs.has(cacheKey)) return temporaryJobs.get(cacheKey)!;
 
   const job = cacheAudioTemporarily(query, track.duration).then((result) => {

@@ -5,7 +5,7 @@ import { Track } from '../types';
 import { getCachedTrackBlobUrl } from '../utils/offlineCache';
 import { resolveTrack } from '../utils/musicApi';
 import { resolveAudioFull, filePathToUrl, getLocalAudioUrl, isElectron } from '../utils/electronBridge';
-import { resolvedCache, raceResolveQueries, minDurationFor, prefetchTrack, prefetchMany } from '../utils/audioCache';
+import { resolvedCache, raceResolveQueries, minDurationFor, prefetchTrack, prefetchMany, cacheTrackTemporarily } from '../utils/audioCache';
 
 export function useAudioPlayer() {
   const howlRef = useRef<Howl | null>(null);
@@ -59,32 +59,46 @@ export function useAudioPlayer() {
     // 3. ÖNCELİK: Eğer yerel veya çevrimdışı blob yoksa ağ akışını hazırla
     if (src === track.audioUrl || !src) {
       if (isElectron()) {
+        // Deezer adresi yalnızca 30 saniyelik önizlemedir. Masaüstünde bu
+        // adresi hiçbir koşulda oynatma kaynağı olarak bırakma.
+        src = '';
+        const cacheKey = track.id || (track.artist + ' ' + track.title);
+        const q1 = track.artist + ' ' + track.title;
+        const temporaryReady = cacheTrackTemporarily(track);
         try {
           const minDur = minDurationFor(track);
-          const q1 = track.artist + ' ' + track.title;
-          let full = await raceResolveQueries([
-            q1,
-            track.title + ' audio',
-            track.artist + ' ' + track.title + ' full song',
-          ], minDur, 600, track.duration);
+          let full = resolvedCache.get(cacheKey) || resolvedCache.get(q1) || null;
+          if (!full || full.duration < minDur) {
+            full = await raceResolveQueries([
+              q1,
+              track.title + ' audio',
+              track.artist + ' ' + track.title + ' full song',
+            ], minDur, 600, track.duration);
+          }
           if (!full) {
             const q2 = track.title + ' song';
             const q3 = track.artist + ' ' + track.title + ' lyrics';
             full = await raceResolveQueries([q2, q3, track.title], minDur, 600, track.duration);
           }
+          if (!full) {
+            // Akış bulunamadıysa arka plandaki tam dosyanın bitmesini bekle.
+            await temporaryReady;
+            full = resolvedCache.get(cacheKey) || resolvedCache.get(q1) || null;
+          }
           if (full) {
             playTrack = { ...track, audioUrl: full.url, duration: full.duration };
             src = full.url;
-          } else {
-            playTrack = await resolveTrack(track);
-            // Deezer's catalog URL is only a 30-second preview. If a full
-            // source cannot be resolved, fail clearly instead of pretending
-            // the preview is the whole song.
-            src = playTrack.source === 'deezer' && playTrack.audioUrl === track.audioUrl
-              ? ''
-              : playTrack.audioUrl;
           }
-        } catch { /* stay with preview */ }
+        } catch {
+          // Hata durumunda bile önizlemeye dönme; hazırlanmış yerel tam
+          // dosya varsa onu kullan, yoksa kullanıcıya sessizce durumu bildir.
+          await temporaryReady;
+          const prepared = resolvedCache.get(cacheKey) || resolvedCache.get(q1);
+          if (prepared) {
+            playTrack = { ...track, audioUrl: prepared.url, duration: prepared.duration };
+            src = prepared.url;
+          }
+        }
       } else {
         // Web tarayıcısı:
         // Eğer bellekte veya kalıcı önbellekte tam sürüm varsa hemen kullan
