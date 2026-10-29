@@ -12,12 +12,19 @@ import SettingsPage from './pages/SettingsPage';
 import { useAppStore } from './store/appStore';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { onDownloadProgress } from './utils/electronBridge';
+import { useDownloadsStore } from './store/downloadsStore';
 
 export default function App() {
   useAudioPlayer();
   const { notification } = useKeyboardShortcuts();
   const { currentView } = useAppStore();
   const navigate = useNavigate();
+  const setDownloadProgress = useDownloadsStore((state) => state.setDownloadProgress);
+
+  React.useEffect(() => onDownloadProgress(({ trackId, percent }) => {
+    setDownloadProgress(trackId, percent);
+  }), [setDownloadProgress]);
 
   const renderPage = () => {
     switch (currentView) {

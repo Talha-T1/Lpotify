@@ -26,13 +26,36 @@ export async function resolveAudioFull(query: string): Promise<ResolvedAudio | n
 /** "download mp" klasörüne gerçek dosya indirir (yalnızca Electron). */
 export async function downloadAudioFile(
   query: string,
-  fileName: string
+  fileName: string,
+  trackId: string
 ): Promise<{ ok: boolean; filePath?: string; dir?: string; error?: string }> {
   if (!isElectron()) return { ok: false, error: 'Yalnızca uygulama içinde çalışır' };
   try {
-    return await (window as any).lpotify.downloadAudio(query, fileName);
+    return await (window as any).lpotify.downloadAudio(query, fileName, trackId);
   } catch (e: any) {
     return { ok: false, error: e?.message || 'İndirme başarısız' };
+  }
+}
+
+export async function cacheAudioTemporarily(
+  query: string,
+  duration: number
+): Promise<{ url: string; duration: number } | null> {
+  if (!isElectron()) return null;
+  try {
+    return await (window as any).lpotify.cacheAudioTemporarily(query, duration);
+  } catch {
+    return null;
+  }
+}
+
+export function onDownloadProgress(
+  callback: (payload: { trackId: string; percent: number }) => void
+): () => void {
+  try {
+    return (window as any).lpotify?.onDownloadProgress?.(callback) || (() => {});
+  } catch {
+    return () => {};
   }
 }
 

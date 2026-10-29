@@ -27,7 +27,6 @@ export function useAudioPlayer() {
     setIsPlaying,
     nextTrack,
     prevTrack,
-    repeat,
   } = usePlayerStore();
 
   const loadTrack = useCallback(async (track: Track) => {
@@ -137,7 +136,7 @@ export function useAudioPlayer() {
       },
       onend: () => {
         if (howlRef.current !== howl) return;
-        if (repeat === 'one') {
+        if (usePlayerStore.getState().repeat === 'one') {
           // Tekrar modu: aynı şarkıyı baştan çal, listede ilerleme.
           try {
             howl.seek(0);
@@ -168,7 +167,14 @@ export function useAudioPlayer() {
                   hasPlayedRef.current = true;
                   setIsPlaying(true);
                 },
-                onend: () => nextTrack(),
+                onend: () => {
+                  if (usePlayerStore.getState().repeat === 'one') {
+                    retryHowl.seek(0);
+                    retryHowl.play();
+                  } else {
+                    nextTrack();
+                  }
+                },
                 onloaderror: () => {
                   setIsPlaying(false);
                 },
@@ -192,7 +198,7 @@ export function useAudioPlayer() {
 
     howlRef.current = howl;
     return howl;
-  }, [volume, setDuration, setIsPlaying, nextTrack, repeat]);
+  }, [volume, setDuration, setIsPlaying, nextTrack]);
 
   useEffect(() => {
     if (currentTrack) {
@@ -208,7 +214,7 @@ export function useAudioPlayer() {
         howlRef.current.unload();
       }
     };
-  }, [currentTrack?.id]);
+  }, [currentTrack?.id, currentTrack?.filePath, currentTrack?.audioUrl]);
 
   // PREFETCH: mevcut şarkı çalarken sıradaki 3 şarkıyı arka planda çözümle
   // (1'er sn arayla). Geçişler anında olur, bekleme olmaz.

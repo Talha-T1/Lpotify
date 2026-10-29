@@ -5,6 +5,7 @@ import { getFeaturedTracks, getTracksByGenre } from '../utils/musicApi';
 import { usePlayerStore } from '../store/playerStore';
 import TrackList from '../components/TrackList';
 import { useT } from '../i18n';
+import { cacheTracksTemporarily } from '../utils/audioCache';
 
 export default function HomePage() {
   const t = useT();
@@ -31,6 +32,10 @@ export default function HomePage() {
     loadData();
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (featuredTracks.length > 0) cacheTracksTemporarily(featuredTracks, 2);
+  }, [featuredTracks]);
 
   const playTrack = (track: Track, index: number, tracks: Track[]) => {
     setQueue(tracks, index);

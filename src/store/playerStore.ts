@@ -33,7 +33,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   shuffle: false,
   repeat: 'off',
 
-  setCurrentTrack: (track) => set({ currentTrack: track }),
+  setCurrentTrack: (track) => set({ currentTrack: track, progress: 0, duration: track?.duration || 0 }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   setVolume: (volume) => {
     const clamped = Math.max(0, Math.min(1, volume));
@@ -47,7 +47,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     set({ 
       queue: tracks, 
       queueIndex: startIndex, 
-      currentTrack: tracks[startIndex] || null 
+      currentTrack: tracks[startIndex] || null,
+      progress: 0,
+      duration: tracks[startIndex]?.duration || 0,
     });
   },
 
@@ -66,7 +68,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       return;
     }
 
-    set({ queueIndex: nextIndex, currentTrack: queue[nextIndex] });
+    set({ queueIndex: nextIndex, currentTrack: queue[nextIndex], progress: 0, duration: queue[nextIndex]?.duration || 0 });
   },
 
   prevTrack: () => {
@@ -77,14 +79,15 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       set({ progress: 0 });
     } else {
       const prevIndex = queueIndex > 0 ? queueIndex - 1 : queue.length - 1;
-      set({ queueIndex: prevIndex, currentTrack: queue[prevIndex] });
+      set({ queueIndex: prevIndex, currentTrack: queue[prevIndex], progress: 0, duration: queue[prevIndex]?.duration || 0 });
     }
   },
 
   toggleShuffle: () => set((state) => ({ shuffle: !state.shuffle })),
 
   toggleRepeat: () => set((state) => ({
-    repeat: state.repeat === 'off' ? 'all' : state.repeat === 'all' ? 'one' : 'off'
+    // İlk tıklama mevcut şarkıyı, ikinci tıklama tüm listeyi tekrarlar.
+    repeat: state.repeat === 'off' ? 'one' : state.repeat === 'one' ? 'all' : 'off'
   })),
 
   addToQueue: (track) => set((state) => ({ queue: [...state.queue, track] })),

@@ -1,4 +1,4 @@
-import { resolveAudioFull, isElectron } from './electronBridge';
+import { cacheAudioTemporarily, resolveAudioFull, isElectron } from './electronBridge';
 import { resolveTrack } from './musicApi';
 import { Track } from '../types';
 
@@ -146,4 +146,40 @@ export function prefetchMany(tracks: Track[], count = 4): void {
   tracks.slice(0, count).forEach((track, i) => {
     setTimeout(() => { prefetchTrack(track); }, i * 1000);
   });
+}
+
+const temporaryJobs = new Map<string, Promise<void>>();
+
+/** Parçayı Electron oturumu boyunca geçici dosyaya indirir. */
+export function cacheTrackTemporarily(track: Track): Promise<void> {
+  if (!isElectron() || !track || track.filePath) return Promise.resolve();
+  const cacheKey = track.id || (track.artist + ' ' + track.title);
+  const query = track.artist + ' ' + track.title;
+  if (resolvedCache.has(cacheKey) || resolvedCache.has(query)) return Promise.resolve();
+  if (temporaryJobs.has(cacheKey)) return temporaryJobs.get(cacheKey)!;
+
+  const job = cacheAudioTemporarily(query, track.duration).then((result) => {
+    if (!result?.url) return;
+    const entry = { url: result.url, duration: result.duration || track.duration };
+    // Yerel proxy adresi yalnızca bellekte tutulur; uygulama yeniden açılınca
+    // yeni oturum klasöründen tekrar hazırlanır.
+    resolvedCache.set(query, entry);
+    resolvedCache.set(cacheKey, entry);
+  }).finally(() => temporaryJobs.delete(cacheKey));
+  temporaryJobs.set(cacheKey, job);
+  return job;
+}
+
+/** Listeyi varsayılan olarak en fazla iki eşzamanlı indirmeyle arka planda hazırlar. */
+export function cacheTracksTemporarily(tracks: Track[], concurrency = 2): void {
+  const queue = tracks.filter((track) => track && !track.filePath);
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < queue.length) {
+      const track = queue[cursor++];
+      await cacheTrackTemporarily(track);
+    }
+  };
+  const workerCount = Math.min(Math.max(1, concurrency), queue.length);
+  for (let i = 0; i < workerCount; i += 1) void worker();
 }

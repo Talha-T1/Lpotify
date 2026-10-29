@@ -10,7 +10,8 @@ const ytDlpBinary = app.isPackaged
   ? path.join(process.resourcesPath, 'yt-dlp', 'yt-dlp.exe')
   : undefined;
 
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
+const crypto = require('crypto');
 
 // Yt-dlp arama sonuçları önbelleği: aynı şarkı tekrar açıldığında
 // YouTube araması beklenmeden anında akış verilir (yükleme hızlanır).
@@ -71,6 +72,50 @@ function safeFileName(name) {
 
 let mainWindow = null;
 
+/* ---------- Oturumluk geçici tam şarkı önbelleği ---------- */
+const temporaryAudioCache = new Map(); // normalized query -> { filePath, duration }
+const temporaryAudioJobs = new Map();
+let temporaryAudioDir = null;
+
+function normalizeQuery(query) {
+  return String(query || '').trim().toLocaleLowerCase('tr-TR');
+}
+
+function getTemporaryAudioDir() {
+  if (temporaryAudioDir) return temporaryAudioDir;
+  const systemTemp = path.resolve(app.getPath('temp'));
+  const cacheRoot = path.resolve(systemTemp, 'lpotify-audio-cache');
+  if (path.dirname(cacheRoot) !== systemTemp) throw new Error('Geçersiz geçici klasör');
+  fs.mkdirSync(cacheRoot, { recursive: true });
+
+  // Önceki çökmelerden kalmış bir günden eski oturum klasörlerini temizle.
+  for (const item of fs.readdirSync(cacheRoot, { withFileTypes: true })) {
+    if (!item.isDirectory() || !item.name.startsWith('session-')) continue;
+    const candidate = path.resolve(cacheRoot, item.name);
+    if (path.dirname(candidate) !== cacheRoot) continue;
+    try {
+      const stat = fs.statSync(candidate);
+      if (Date.now() - stat.mtimeMs > 24 * 60 * 60 * 1000) {
+        fs.rmSync(candidate, { recursive: true, force: true });
+      }
+    } catch { /* sonraki açılışta tekrar denenir */ }
+  }
+
+  temporaryAudioDir = path.join(cacheRoot, 'session-' + process.pid + '-' + Date.now());
+  fs.mkdirSync(temporaryAudioDir, { recursive: true });
+  return temporaryAudioDir;
+}
+
+function cleanupTemporaryAudio() {
+  if (!temporaryAudioDir) return;
+  const cacheRoot = path.resolve(app.getPath('temp'), 'lpotify-audio-cache');
+  const candidate = path.resolve(temporaryAudioDir);
+  if (path.dirname(candidate) !== cacheRoot || !path.basename(candidate).startsWith('session-')) return;
+  try { fs.rmSync(candidate, { recursive: true, force: true }); } catch { /* Windows kapanışta kilitleyebilir */ }
+  temporaryAudioDir = null;
+  temporaryAudioCache.clear();
+}
+
 /* ---------- Windows görev çubuğu küçük önizleme düğmeleri ---------- */
 const taskbarIconData = {
   heart: 'iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAFlSURBVEhL7ZWhcgJBEESRkZHIyMjIyMhIJJJPQCJxkUgkn4CMjIyMjIxEInHdVF/NpmYb7g6OisuT27MzvXsze6PRP7cC4JnkguRDXid5T3JJ8iWv9xIbFwDeARwYAPgpRRQD4KtooX8CeCP56DkrAKzyxkwUefLkGWme8xeS4+IawAbAVGuRdG+JDgBe48QTMzbx3A0l6JyLXKQk9xgA27b9lfs2B1Fkdy65kN56iugUVf+uBIPkna9l1ByRZ1sJJGch7CrhSlKBVSXY8caVeAXpO01dk9j5DfrQnCSTp/OgYQlx6dolyJg2y6hrDalNd7oy17uILmwGUEZdb7Be37e1oxP7NOVlRk7vv6C7K8HBzGMyeuyyqYseP3/M9Ih5jFDx9LTI1OmHbUMDVUY/EmzykJXBDE1mhrU2gHVK9BGnU7GyJhOd090LgHlKmP8Ra48djDrDks895mb0+4wZGTTpf8IRAUesnTafJqUAAAAASUVORK5CYII=',
@@ -126,6 +171,27 @@ const streams = new Map(); // token -> { url, headers }
 let proxyServer = null;
 let proxyPort = 0;
 
+function createLocalAudioUrl(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  const token = crypto.randomBytes(12).toString('hex');
+  const ext = path.extname(filePath).toLowerCase().replace('.', '');
+  streams.set(token, { filePath, ext });
+  if (streams.size > 100) {
+    const first = streams.keys().next().value;
+    streams.delete(first);
+  }
+  return 'http://127.0.0.1:' + proxyPort + '/stream?t=' + token;
+}
+
+function localAudioContentType(ext) {
+  if (ext === 'mp3') return 'audio/mpeg';
+  if (ext === 'webm') return 'audio/webm';
+  if (ext === 'ogg' || ext === 'opus') return 'audio/ogg';
+  if (ext === 'flac') return 'audio/flac';
+  if (ext === 'wav') return 'audio/wav';
+  return 'audio/mp4';
+}
+
 function startProxy() {
   proxyServer = http.createServer((req, res) => {
     const token = new URL(req.url, 'http://x').searchParams.get('t');
@@ -140,7 +206,7 @@ function startProxy() {
       const total = stat.size;
       const range = req.headers.range;
       const headers = {
-        'Content-Type': entry.ext === 'mp3' ? 'audio/mpeg' : 'audio/mp4',
+        'Content-Type': localAudioContentType(entry.ext),
         'Accept-Ranges': 'bytes',
       };
       if (range) {
@@ -231,6 +297,16 @@ function createWindow() {
  */
 ipcMain.handle('resolve-audio', async (_event, query) => {
   try {
+    const temporary = temporaryAudioCache.get(normalizeQuery(query));
+    if (temporary && fs.existsSync(temporary.filePath)) {
+      return {
+        url: createLocalAudioUrl(temporary.filePath),
+        title: query,
+        duration: temporary.duration || 0,
+        thumbnail: '',
+        ext: path.extname(temporary.filePath).slice(1) || 'm4a',
+      };
+    }
     let info = await ytSearch(query);
     // ytsearch even with "1" can wrap results in a playlist object
     if (info && info._type === 'playlist') info = (info.entries || [])[0];
@@ -258,7 +334,7 @@ ipcMain.handle('resolve-audio', async (_event, query) => {
     const best = pool[0];
 
     // Stream through the local proxy so playback never falls back to a 30s preview.
-    const token = require('crypto').randomBytes(12).toString('hex');
+    const token = crypto.randomBytes(12).toString('hex');
     streams.set(token, { url: best.url, headers: info.http_headers || {} });
     // keep map small
     if (streams.size > 100) {
@@ -279,9 +355,55 @@ ipcMain.handle('resolve-audio', async (_event, query) => {
   }
 });
 
+/* Öne Çıkanlar parçalarını tam dosya olarak oturumluk klasöre hazırlar. */
+ipcMain.handle('cache-audio-temporarily', async (_event, payload) => {
+  const query = String(payload?.query || '').trim();
+  const duration = Number(payload?.duration || 0);
+  if (!query) return null;
+  const key = normalizeQuery(query);
+  const cached = temporaryAudioCache.get(key);
+  if (cached && fs.existsSync(cached.filePath)) {
+    return { url: createLocalAudioUrl(cached.filePath), duration: cached.duration || duration };
+  }
+  if (temporaryAudioJobs.has(key)) return temporaryAudioJobs.get(key);
+
+  const job = (async () => {
+    const binary = ytDlpBinary || devYtDlpPath();
+    if (!binary || !fs.existsSync(binary)) return null;
+    const id = crypto.createHash('sha1').update(key).digest('hex');
+    const outTemplate = path.join(getTemporaryAudioDir(), id + '.%(ext)s');
+    const args = [
+      '-f', 'bestaudio[ext=m4a]/bestaudio/best',
+      '-o', outTemplate,
+      '--no-warnings',
+      '--no-check-certificates',
+      '--no-playlist',
+      '--print', 'after_move:__LP_FILE__%(filepath)s',
+      '--no-simulate',
+      'ytsearch1:' + query,
+    ];
+    const filePath = await new Promise((resolve, reject) => {
+      execFile(binary, args, { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
+        if (err) return reject(err);
+        const line = String(stdout).split(/\r?\n/).find((value) => value.startsWith('__LP_FILE__'));
+        resolve(line ? line.slice('__LP_FILE__'.length).trim() : null);
+      });
+    });
+    if (!filePath || !fs.existsSync(filePath)) return null;
+    temporaryAudioCache.set(key, { filePath, duration });
+    return { url: createLocalAudioUrl(filePath), duration };
+  })().catch((err) => {
+    console.error('temporary audio cache failed:', err.message);
+    return null;
+  }).finally(() => temporaryAudioJobs.delete(key));
+
+  temporaryAudioJobs.set(key, job);
+  return job;
+});
+
 /* ---------- Şarkıyı "download mp" klasörüne gerçek dosya olarak indir ---------- */
-ipcMain.handle('download-audio', async (_event, payload) => {
-  const { query, fileName } = payload || {};
+ipcMain.handle('download-audio', async (event, payload) => {
+  const { query, fileName, trackId } = payload || {};
   try {
     const binary = ytDlpBinary || devYtDlpPath();
     if (!binary) {
@@ -295,18 +417,43 @@ ipcMain.handle('download-audio', async (_event, payload) => {
       '--no-warnings',
       '--no-check-certificates',
       '--no-playlist',
-      '--print', 'after_move:filepath',
+      '--newline',
+      '--progress',
+      '--progress-template', 'download:__LP_PROGRESS__%(progress._percent_str)s',
+      '--print', 'after_move:__LP_FILE__%(filepath)s',
       '--no-simulate',
       'ytsearch1:' + query,
     ];
     const filePath = await new Promise((resolve, reject) => {
-      execFile(binary, args, { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
-        if (err) return reject(err);
-        const lines = String(stdout).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-        resolve(lines.length ? lines[lines.length - 1] : null);
+      const child = spawn(binary, args, { windowsHide: true });
+      let output = '';
+      let errors = '';
+      let progressBuffer = '';
+      const handleProgress = (chunk) => {
+        progressBuffer += String(chunk);
+        const lines = progressBuffer.split(/\r?\n/);
+        progressBuffer = lines.pop() || '';
+        for (const line of lines) {
+          const match = /__LP_PROGRESS__\s*([\d.]+)%/.exec(line);
+          if (match && trackId && !event.sender.isDestroyed()) {
+            const percent = Math.max(0, Math.min(100, Math.round(Number(match[1]))));
+            event.sender.send('download-progress', { trackId, percent });
+          }
+        }
+      };
+      child.stdout.on('data', (chunk) => { output += String(chunk); handleProgress(chunk); });
+      child.stderr.on('data', (chunk) => { errors += String(chunk); handleProgress(chunk); });
+      child.on('error', reject);
+      child.on('close', (code) => {
+        if (code !== 0) return reject(new Error(errors.trim() || 'yt-dlp çıkış kodu: ' + code));
+        const line = output.split(/\r?\n/).find((value) => value.startsWith('__LP_FILE__'));
+        resolve(line ? line.slice('__LP_FILE__'.length).trim() : null);
       });
     });
     if (!filePath) return { ok: false, error: 'Dosya yolu alınamadı' };
+    if (trackId && !event.sender.isDestroyed()) {
+      event.sender.send('download-progress', { trackId, percent: 100 });
+    }
     return { ok: true, filePath, dir };
   } catch (err) {
     console.error('download failed:', err.message);
@@ -321,15 +468,7 @@ ipcMain.handle('get-downloads-dir', () => {
 // Yerel ses dosyasını uygulama içinden güvenle çalmak için proxy adresi üret.
 ipcMain.handle('local-audio-url', (_event, filePath) => {
   try {
-    if (!filePath || !fs.existsSync(filePath)) return null;
-    const token = require('crypto').randomBytes(12).toString('hex');
-    const ext = path.extname(filePath).toLowerCase().replace('.', '');
-    streams.set(token, { filePath, ext });
-    if (streams.size > 100) {
-      const first = streams.keys().next().value;
-      streams.delete(first);
-    }
-    return 'http://127.0.0.1:' + proxyPort + '/stream?t=' + token;
+    return createLocalAudioUrl(filePath);
   } catch {
     return null;
   }
@@ -349,6 +488,7 @@ app.whenReady().then(() => {
   startProxy();
   createWindow();
 });
+app.on('before-quit', cleanupTemporaryAudio);
 app.on('window-all-closed', () => app.quit());
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();

@@ -23,15 +23,18 @@ function saveAll(tracks: Track[]) {
 interface DownloadsStore {
   downloads: Track[];
   downloading: string[];
+  downloadProgress: Record<string, number>;
   addDownload: (track: Track) => void;
   removeDownload: (trackId: string) => void;
   isDownloaded: (trackId: string) => boolean;
   setDownloading: (trackId: string, isDownloading: boolean) => void;
+  setDownloadProgress: (trackId: string, percent: number | null) => void;
 }
 
 export const useDownloadsStore = create<DownloadsStore>((set, get) => ({
   downloads: loadSaved(),
   downloading: [],
+  downloadProgress: {},
 
   addDownload: (track) => {
     set((state) => {
@@ -39,7 +42,9 @@ export const useDownloadsStore = create<DownloadsStore>((set, get) => ({
         ? state.downloads
         : [...state.downloads, { ...track, isDownloaded: true }];
       saveAll(downloads);
-      return { downloads, downloading: state.downloading.filter((id) => id !== track.id) };
+      const downloadProgress = { ...state.downloadProgress };
+      delete downloadProgress[track.id];
+      return { downloads, downloadProgress, downloading: state.downloading.filter((id) => id !== track.id) };
     });
   },
 
@@ -61,5 +66,14 @@ export const useDownloadsStore = create<DownloadsStore>((set, get) => ({
         ? [...state.downloading, trackId]
         : state.downloading.filter((id) => id !== trackId),
     }));
+  },
+
+  setDownloadProgress: (trackId, percent) => {
+    set((state) => {
+      const downloadProgress = { ...state.downloadProgress };
+      if (percent == null) delete downloadProgress[trackId];
+      else downloadProgress[trackId] = Math.max(0, Math.min(100, Math.round(percent)));
+      return { downloadProgress };
+    });
   },
 }));

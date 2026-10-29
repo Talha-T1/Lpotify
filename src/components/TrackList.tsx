@@ -20,11 +20,13 @@ export default function TrackList({ tracks, showHeader = true, showCover = true 
   const t = useT();
   const { currentTrack, isPlaying, setQueue, setIsPlaying, setCurrentTrack } = usePlayerStore();
   const { playlists, addToPlaylist } = usePlaylistStore();
-  const { downloads, addDownload, setDownloading, downloading, removeDownload } = useDownloadsStore();
+  const { downloads, addDownload, setDownloading, downloading, downloadProgress, setDownloadProgress, removeDownload } = useDownloadsStore();
   const likedPlaylist = playlists.find(p => p.id === 'liked-songs');
 
   const handlePlay = (track: Track, index: number) => {
-    if (currentTrack?.id === track.id) {
+    const samePlayableSource = currentTrack?.id === track.id &&
+      (currentTrack.filePath || '') === (track.filePath || '');
+    if (samePlayableSource) {
       setIsPlaying(!isPlaying);
     } else {
       setQueue(tracks, index);
@@ -41,13 +43,15 @@ export default function TrackList({ tracks, showHeader = true, showCover = true 
       return;
     }
     setDownloading(track.id, true);
+    setDownloadProgress(track.id, 0);
     try {
       // Electron: şarkıyı "download mp" klasörüne gerçek ses dosyası olarak indir
       // (isteyen dosya yöneticisinden de dinleyebilir).
       if (isElectron()) {
         const res = await downloadAudioFile(
           track.artist + ' ' + track.title,
-          track.artist + ' - ' + track.title
+          track.artist + ' - ' + track.title,
+          track.id
         );
         if (!res.ok || !res.filePath) throw new Error(res.error || 'İndirme başarısız');
         addDownload({ ...track, isDownloaded: true, filePath: res.filePath, audioUrl: res.filePath });
@@ -65,6 +69,7 @@ export default function TrackList({ tracks, showHeader = true, showCover = true 
       }
     } catch (err) {
       console.error('Download failed:', err);
+      setDownloadProgress(track.id, null);
     }
     setDownloading(track.id, false);
   };
@@ -129,7 +134,9 @@ export default function TrackList({ tracks, showHeader = true, showCover = true 
                   disabled={dlInProgress}>
                   <Download size={14} />
                 </button>
-                <span className="text-sm text-lpotify-gray-light">{formatDuration(track.duration)}</span>
+                <span className={`text-sm ${dlInProgress ? 'text-lpotify-green font-semibold tabular-nums' : 'text-lpotify-gray-light'}`}>
+                  {dlInProgress ? `%${downloadProgress[track.id] ?? 0}` : formatDuration(track.duration)}
+                </span>
               </div>
               <div className="flex items-center justify-end gap-1">
                 <button onClick={(e) => { e.stopPropagation(); if (!liked) addToPlaylist('liked-songs', track); }}
