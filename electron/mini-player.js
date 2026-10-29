@@ -1,6 +1,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   let currentState = {};
+  let lyricSignature = '';
 
   function formatTime(value) {
     const seconds = Math.max(0, Number(value) || 0);
@@ -15,20 +16,48 @@
     return state.currentLyric || '♪';
   }
 
+  function renderLyrics(state) {
+    const list = $('lyricsList');
+    const lines = Array.isArray(state.visibleLyrics) ? state.visibleLyrics : [];
+    const signature = lines.map((line) => `${line.time}:${line.text}:${line.active}`).join('|')
+      + ':' + state.lyricsEnabled + ':' + state.lyricsStatus;
+    if (signature === lyricSignature) return;
+    lyricSignature = signature;
+    list.replaceChildren();
+
+    if (!state.lyricsEnabled || state.lyricsStatus !== 'ready' || lines.length === 0) {
+      const message = document.createElement('div');
+      message.className = 'lyrics-message';
+      message.textContent = lyricMessage(state);
+      list.appendChild(message);
+      return;
+    }
+
+    for (const line of lines) {
+      const row = document.createElement('div');
+      row.className = 'lyric-line' + (line.active ? ' active' : '');
+      row.textContent = line.text;
+      list.appendChild(row);
+    }
+    list.classList.remove('rise');
+    void list.offsetHeight;
+    list.classList.add('rise');
+  }
+
   function render(state) {
     currentState = state || {};
     $('title').textContent = state.title || 'Lpotify';
     $('artist').textContent = state.artist || 'Bir şarkı seçin';
+    if (state.coverUrl && $('cover').src !== state.coverUrl) $('cover').src = state.coverUrl;
     $('play').textContent = state.isPlaying ? '❚❚' : '▶';
     $('elapsed').textContent = formatTime(state.progress);
     $('duration').textContent = formatTime(state.duration);
     $('progress').max = Math.max(1, Number(state.duration) || 1);
     $('progress').value = Math.min(Number(state.progress) || 0, Number($('progress').max));
-    $('repeat').classList.toggle('active', state.repeat && state.repeat !== 'off');
+    $('repeat').classList.toggle('active-control', state.repeat && state.repeat !== 'off');
     $('repeat').textContent = state.repeat === 'one' ? '↻¹' : '↻';
-    $('lyricsToggle').classList.toggle('active', Boolean(state.lyricsEnabled));
-    $('lyricCurrent').textContent = lyricMessage(state);
-    $('lyricNext').textContent = state.lyricsEnabled ? (state.nextLyric || '') : '';
+    $('lyricsToggle').classList.toggle('active-control', Boolean(state.lyricsEnabled));
+    renderLyrics(state);
   }
 
   const send = (action) => window.lpotify?.sendMiniPlayerAction?.(action);

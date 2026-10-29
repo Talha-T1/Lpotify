@@ -406,11 +406,11 @@ function createMiniWindow() {
     return miniWindow;
   }
   miniWindow = new BrowserWindow({
-    width: 380,
-    height: 190,
-    minWidth: 330,
-    minHeight: 170,
-    maxHeight: 260,
+    width: 350,
+    height: 470,
+    minWidth: 320,
+    minHeight: 410,
+    maxHeight: 600,
     frame: false,
     transparent: false,
     alwaysOnTop: true,

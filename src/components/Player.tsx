@@ -93,6 +93,7 @@ export default function Player() {
     updateMiniPlayerState({
       title: currentTrack?.title || 'Lpotify',
       artist: currentTrack?.artist || '',
+      coverUrl: currentTrack?.coverUrl || '',
       isPlaying,
       progress: miniProgressTick,
       duration,
@@ -101,9 +102,10 @@ export default function Player() {
       lyricsStatus: lyrics.status,
       currentLyric: lyrics.currentLine,
       nextLyric: lyrics.nextLine,
+      visibleLyrics: lyrics.visibleLines,
     });
   }, [currentTrack?.id, currentTrack?.title, currentTrack?.artist, isPlaying, miniProgressTick, duration, repeat,
-    lyricsEnabled, lyrics.status, lyrics.currentLine, lyrics.nextLine]);
+    lyricsEnabled, lyrics.status, lyrics.currentLine, lyrics.nextLine, lyrics.visibleLines]);
 
   if (!currentTrack) {
     return (

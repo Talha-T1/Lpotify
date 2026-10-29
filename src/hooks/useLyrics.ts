@@ -91,9 +91,19 @@ export function useLyrics(track: Track | null, enabled: boolean, progress: numbe
     return index;
   }, [state.lines, progress]);
 
+  const visibleLines = useMemo(() => {
+    const start = Math.max(0, activeIndex);
+    return state.lines.slice(start, start + 5).map((line, index) => ({
+      time: line.time,
+      text: line.text,
+      active: activeIndex >= 0 && index === 0,
+    }));
+  }, [state.lines, activeIndex]);
+
   return {
     status: state.status,
     currentLine: activeIndex >= 0 ? state.lines[activeIndex]?.text || '' : '',
     nextLine: state.lines[activeIndex + 1]?.text || '',
+    visibleLines,
   };
 }
