@@ -60,8 +60,8 @@ export default function Player() {
     try { return localStorage.getItem('lpotify-mini-lyrics') !== 'off'; }
     catch { return true; }
   });
-  const lyrics = useLyrics(currentTrack, showMiniPlayer && lyricsEnabled, progress);
-  const miniProgressTick = Math.floor(progress * 4) / 4;
+  const lyrics = useLyrics(currentTrack, showMiniPlayer && lyricsEnabled, progress, duration);
+  const miniProgressTick = Math.floor(progress * 20) / 20;
 
   const toggleLyrics = useCallback(() => {
     setLyricsEnabled((enabled) => {

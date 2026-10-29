@@ -9,9 +9,11 @@ export interface LyricLine {
 type LyricsState = {
   status: 'idle' | 'loading' | 'ready' | 'missing' | 'error';
   lines: LyricLine[];
+  referenceDuration: number;
 };
 
-const lyricsCache = new Map<string, LyricLine[]>();
+type CachedLyrics = { lines: LyricLine[]; referenceDuration: number };
+const lyricsCache = new Map<string, CachedLyrics>();
 let requestQueue = Promise.resolve();
 
 function parseSyncedLyrics(value: string | null | undefined): LyricLine[] {
@@ -37,7 +39,7 @@ function queueLyricsRequest<T>(task: () => Promise<T>): Promise<T> {
   return result;
 }
 
-async function fetchLyrics(track: Track): Promise<LyricLine[]> {
+async function fetchLyrics(track: Track): Promise<CachedLyrics> {
   const params = new URLSearchParams({
     track_name: track.title,
     artist_name: track.artist,
@@ -48,48 +50,57 @@ async function fetchLyrics(track: Track): Promise<LyricLine[]> {
   const response = await fetch('https://lrclib.net/api/get?' + params.toString(), {
     headers: { 'Lrclib-Client': 'Lpotify v1.0 (https://github.com/Talha-T1/Lpotify)' },
   });
-  if (response.status === 404) return [];
+  if (response.status === 404) return { lines: [], referenceDuration: track.duration || 0 };
   if (response.status === 429) throw new Error('rate-limited');
   if (!response.ok) throw new Error('lyrics-request-failed');
   const record = await response.json();
-  return parseSyncedLyrics(record?.syncedLyrics);
+  return {
+    lines: parseSyncedLyrics(record?.syncedLyrics),
+    referenceDuration: Number(record?.duration || track.duration || 0),
+  };
 }
 
-export function useLyrics(track: Track | null, enabled: boolean, progress: number) {
-  const [state, setState] = useState<LyricsState>({ status: 'idle', lines: [] });
+export function useLyrics(track: Track | null, enabled: boolean, progress: number, playbackDuration = 0) {
+  const [state, setState] = useState<LyricsState>({ status: 'idle', lines: [], referenceDuration: 0 });
   const key = track ? `${track.artist}\n${track.title}\n${Math.round(track.duration || 0)}` : '';
 
   useEffect(() => {
     let cancelled = false;
     if (!enabled || !track) {
-      setState({ status: 'idle', lines: [] });
+      setState({ status: 'idle', lines: [], referenceDuration: 0 });
       return () => { cancelled = true; };
     }
     const cached = lyricsCache.get(key);
     if (cached) {
-      setState({ status: cached.length ? 'ready' : 'missing', lines: cached });
+      setState({ status: cached.lines.length ? 'ready' : 'missing', ...cached });
       return () => { cancelled = true; };
     }
 
-    setState({ status: 'loading', lines: [] });
-    queueLyricsRequest(() => fetchLyrics(track)).then((lines) => {
+    setState({ status: 'loading', lines: [], referenceDuration: 0 });
+    queueLyricsRequest(() => fetchLyrics(track)).then((result) => {
       if (cancelled) return;
-      lyricsCache.set(key, lines);
-      setState({ status: lines.length ? 'ready' : 'missing', lines });
+      lyricsCache.set(key, result);
+      setState({ status: result.lines.length ? 'ready' : 'missing', ...result });
     }).catch(() => {
-      if (!cancelled) setState({ status: 'error', lines: [] });
+      if (!cancelled) setState({ status: 'error', lines: [], referenceDuration: 0 });
     });
     return () => { cancelled = true; };
   }, [key, enabled]);
 
   const activeIndex = useMemo(() => {
+    const scale = state.referenceDuration > 0 && playbackDuration > 0
+      ? playbackDuration / state.referenceDuration
+      : 1;
+    // Görsel satırı, duyulan kelimeden az önce hazırlamak algılanan gecikmeyi
+    // giderir ve 50 ms'lik oynatıcı güncellemesiyle birlikte daha doğal görünür.
+    const synchronizedProgress = progress + 0.5;
     let index = -1;
     for (let i = 0; i < state.lines.length; i += 1) {
-      if (state.lines[i].time <= progress + 0.15) index = i;
+      if (state.lines[i].time * scale <= synchronizedProgress) index = i;
       else break;
     }
     return index;
-  }, [state.lines, progress]);
+  }, [state.lines, state.referenceDuration, progress, playbackDuration]);
 
   const visibleLines = useMemo(() => {
     const start = Math.max(0, activeIndex);
