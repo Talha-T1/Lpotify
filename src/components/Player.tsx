@@ -1,13 +1,17 @@
 import React, { useCallback, useState } from 'react';
 import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1,
-  Volume2, VolumeX, Volume1, Heart, ListMusic, PictureInPicture2, X,
+  Volume2, VolumeX, Volume1, Heart, ListMusic, PictureInPicture2,
 } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { usePlaylistStore } from '../store/playlistStore';
 import { formatDuration } from '../utils/musicApi';
 import { useT } from '../i18n';
-import { onTaskbarPlayerAction, updateTaskbarControls } from '../utils/electronBridge';
+import {
+  onTaskbarPlayerAction, updateTaskbarControls, toggleMiniPlayer,
+  updateMiniPlayerState, onMiniPlayerAction, onMiniPlayerVisibilityChanged,
+} from '../utils/electronBridge';
+import { useLyrics } from '../hooks/useLyrics';
 
 export default function Player() {
   const t = useT();
@@ -52,12 +56,54 @@ export default function Player() {
   }), [currentTrack?.id, isLiked, addToPlaylist, removeFromPlaylist, prevTrack, nextTrack, setIsPlaying]);
 
   const [showMiniPlayer, setShowMiniPlayer] = useState(false);
+  const [lyricsEnabled, setLyricsEnabled] = useState(() => {
+    try { return localStorage.getItem('lpotify-mini-lyrics') !== 'off'; }
+    catch { return true; }
+  });
+  const lyrics = useLyrics(currentTrack, showMiniPlayer && lyricsEnabled, progress);
+  const miniProgressTick = Math.floor(progress * 4) / 4;
+
+  const toggleLyrics = useCallback(() => {
+    setLyricsEnabled((enabled) => {
+      const next = !enabled;
+      try { localStorage.setItem('lpotify-mini-lyrics', next ? 'on' : 'off'); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
+  const toggleNativeMiniPlayer = useCallback(async () => {
+    setShowMiniPlayer(await toggleMiniPlayer());
+  }, []);
+
+  React.useEffect(() => onMiniPlayerVisibilityChanged(setShowMiniPlayer), []);
+
+  React.useEffect(() => onMiniPlayerAction((payload) => {
+    if (payload.action === 'previous') prevTrack();
+    else if (payload.action === 'play-pause') setIsPlaying(!usePlayerStore.getState().isPlaying);
+    else if (payload.action === 'next') nextTrack();
+    else if (payload.action === 'toggle-repeat') toggleRepeat();
+    else if (payload.action === 'toggle-lyrics') toggleLyrics();
+    else if (payload.action === 'seek') {
+      setProgress(payload.time);
+      window.dispatchEvent(new CustomEvent('player-seek', { detail: { time: payload.time } }));
+    }
+  }), [nextTrack, prevTrack, setIsPlaying, setProgress, toggleRepeat, toggleLyrics]);
 
   React.useEffect(() => {
-    const handleClose = () => setShowMiniPlayer(false);
-    window.addEventListener('close-modals', handleClose);
-    return () => window.removeEventListener('close-modals', handleClose);
-  }, []);
+    updateMiniPlayerState({
+      title: currentTrack?.title || 'Lpotify',
+      artist: currentTrack?.artist || '',
+      isPlaying,
+      progress: miniProgressTick,
+      duration,
+      repeat,
+      lyricsEnabled,
+      lyricsStatus: lyrics.status,
+      currentLyric: lyrics.currentLine,
+      nextLyric: lyrics.nextLine,
+    });
+  }, [currentTrack?.id, currentTrack?.title, currentTrack?.artist, isPlaying, miniProgressTick, duration, repeat,
+    lyricsEnabled, lyrics.status, lyrics.currentLine, lyrics.nextLine]);
 
   if (!currentTrack) {
     return (
@@ -72,115 +118,11 @@ export default function Player() {
 
   return (
     <>
-      {/* Spotify Tarzı Yüzen Mini Oynatıcı / Hover Widget */}
-      {showMiniPlayer && (
-        <div className="fixed bottom-24 right-6 z-50 bg-[#181818]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-4 w-72 animate-slide-up text-white">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-lpotify-gray-light uppercase tracking-wider">
-              {t('miniPlayer')}
-            </span>
-            <button
-              onClick={() => setShowMiniPlayer(false)}
-              className="p-1 rounded-full text-lpotify-gray-light hover:text-white hover:bg-white/10 transition-colors"
-            >
-              <X size={16} />
-            </button>
-          </div>
-
-          <div className="relative aspect-square w-full rounded-xl overflow-hidden mb-3 group shadow-xl">
-            <img
-              src={currentTrack.coverUrl}
-              alt={currentTrack.title}
-              className="w-full h-full object-cover"
-              onError={(e) => { (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/default/250/250'; }}
-            />
-            {/* Hover hızlı kontroller */}
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
-              <button
-                onClick={prevTrack}
-                title={t('previous')}
-                className="w-9 h-9 rounded-full bg-black/60 flex items-center justify-center hover:scale-110 transition-transform"
-              >
-                <SkipBack size={16} fill="white" />
-              </button>
-              <button
-                onClick={() => setIsPlaying(!isPlaying)}
-                title={isPlaying ? t('pause') : t('play')}
-                className="w-12 h-12 rounded-full bg-lpotify-green flex items-center justify-center hover:scale-110 transition-transform shadow-lg"
-              >
-                {isPlaying ? <Pause size={20} className="text-black" fill="black" /> : <Play size={20} className="text-black ml-0.5" fill="black" />}
-              </button>
-              <button
-                onClick={nextTrack}
-                title={t('next')}
-                className="w-9 h-9 rounded-full bg-black/60 flex items-center justify-center hover:scale-110 transition-transform"
-              >
-                <SkipForward size={16} fill="white" />
-              </button>
-            </div>
-          </div>
-
-          <div className="mb-3">
-            <h4 className="font-bold text-sm truncate">{currentTrack.title}</h4>
-            <p className="text-xs text-lpotify-gray-light truncate">{currentTrack.artist}</p>
-          </div>
-
-          {/* İlerleme Çubuğu */}
-          <div className="mb-3">
-            <div className="flex-1 progress-container relative h-1 group cursor-pointer mb-1">
-              <div className="absolute inset-0 bg-lpotify-gray rounded-full">
-                <div className="progress-filled rounded-full transition-all" style={{ width: `${progressPercent}%` }} />
-              </div>
-              <input
-                type="range"
-                min="0"
-                max={duration || 100}
-                value={progress}
-                onChange={handleSeek}
-                className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
-              />
-            </div>
-            <div className="flex justify-between text-[10px] text-lpotify-gray-light">
-              <span>{formatDuration(progress)}</span>
-              <span>{formatDuration(duration)}</span>
-            </div>
-          </div>
-
-          {/* Mini Kontrol Butonları */}
-          <div className="flex items-center justify-center gap-4">
-            <button
-              onClick={toggleShuffle}
-              className={`p-1 rounded-full transition-colors ${shuffle ? 'text-lpotify-green' : 'text-lpotify-gray-light hover:text-white'}`}
-            >
-              <Shuffle size={14} />
-            </button>
-            <button onClick={prevTrack} className="p-1 text-lpotify-gray-light hover:text-white transition-colors">
-              <SkipBack size={18} fill="currentColor" />
-            </button>
-            <button
-              onClick={() => setIsPlaying(!isPlaying)}
-              className="w-10 h-10 bg-white rounded-full flex items-center justify-center hover:scale-105 transition-transform"
-            >
-              {isPlaying ? <Pause size={18} className="text-black" fill="black" /> : <Play size={18} className="text-black ml-0.5" fill="black" />}
-            </button>
-            <button onClick={nextTrack} className="p-1 text-lpotify-gray-light hover:text-white transition-colors">
-              <SkipForward size={18} fill="currentColor" />
-            </button>
-            <button
-              onClick={toggleRepeat}
-              className={`p-1 rounded-full transition-colors ${repeat !== 'off' ? 'text-lpotify-green' : 'text-lpotify-gray-light hover:text-white'}`}
-            >
-              {repeat === 'one' ? <Repeat1 size={14} /> : <Repeat size={14} />}
-            </button>
-          </div>
-        </div>
-      )}
-
       <div className="h-16 lg:h-[90px] bg-lpotify-dark border-t border-lpotify-gray/30 px-3 md:px-4 flex items-center justify-between gap-2 shrink-0">
         {/* Track Info */}
         <div className="flex items-center gap-2 md:gap-3 w-[42%] md:w-[30%] min-w-0 md:min-w-[180px]">
           <div
-            onClick={() => setShowMiniPlayer(!showMiniPlayer)}
+            onClick={toggleNativeMiniPlayer}
             title={t('miniPlayer')}
             className="w-10 h-10 md:w-14 md:h-14 rounded-md overflow-hidden shrink-0 shadow-lg relative group cursor-pointer"
           >
@@ -239,7 +181,7 @@ export default function Player() {
         {/* Volume & Extra Controls (yalnızca masaüstü) */}
         <div className="hidden md:flex items-center gap-3 w-[30%] justify-end min-w-[180px]">
           <button
-            onClick={() => setShowMiniPlayer(!showMiniPlayer)}
+            onClick={toggleNativeMiniPlayer}
             title={t('miniPlayer')}
             className={`p-1 transition-colors ${showMiniPlayer ? 'text-lpotify-green' : 'text-lpotify-gray-light hover:text-white'}`}
           >

@@ -92,6 +92,34 @@ export function onTaskbarPlayerAction(
   }
 }
 
+export type MiniPlayerAction =
+  | { action: 'previous' | 'play-pause' | 'next' | 'toggle-repeat' | 'toggle-lyrics' }
+  | { action: 'seek'; time: number };
+
+export function toggleMiniPlayer(): Promise<boolean> {
+  try { return (window as any).lpotify?.toggleMiniPlayer?.() || Promise.resolve(false); }
+  catch { return Promise.resolve(false); }
+}
+
+export function closeMiniPlayer(): Promise<boolean> {
+  try { return (window as any).lpotify?.closeMiniPlayer?.() || Promise.resolve(false); }
+  catch { return Promise.resolve(false); }
+}
+
+export function updateMiniPlayerState(state: Record<string, unknown>): void {
+  try { (window as any).lpotify?.updateMiniPlayerState?.(state); } catch { /* ignore */ }
+}
+
+export function onMiniPlayerAction(callback: (action: MiniPlayerAction) => void): () => void {
+  try { return (window as any).lpotify?.onMiniPlayerAction?.(callback) || (() => {}); }
+  catch { return () => {}; }
+}
+
+export function onMiniPlayerVisibilityChanged(callback: (visible: boolean) => void): () => void {
+  try { return (window as any).lpotify?.onMiniPlayerVisibilityChanged?.(callback) || (() => {}); }
+  catch { return () => {}; }
+}
+
 /** Yerel dosya yolunu <audio>/Howler ile çalınabilir adrese çevirir.
  *  Electron'da güvenilir yol: dahili yerel sunucu (Range destekli).
  *  Tarayıcıda: file:// adresi döner (yine de çoğunlukla kullanılmaz). */

@@ -19,4 +19,23 @@ contextBridge.exposeInMainWorld('lpotify', {
     ipcRenderer.on('taskbar-player-action', listener);
     return () => ipcRenderer.removeListener('taskbar-player-action', listener);
   },
+  toggleMiniPlayer: () => ipcRenderer.invoke('toggle-mini-player'),
+  closeMiniPlayer: () => ipcRenderer.invoke('close-mini-player'),
+  updateMiniPlayerState: (state) => ipcRenderer.send('mini-player-state', state),
+  onMiniPlayerState: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on('mini-player-state', listener);
+    return () => ipcRenderer.removeListener('mini-player-state', listener);
+  },
+  onMiniPlayerAction: (callback) => {
+    const listener = (_event, action) => callback(action);
+    ipcRenderer.on('mini-player-action', listener);
+    return () => ipcRenderer.removeListener('mini-player-action', listener);
+  },
+  sendMiniPlayerAction: (action) => ipcRenderer.send('mini-player-action', action),
+  onMiniPlayerVisibilityChanged: (callback) => {
+    const listener = (_event, visible) => callback(Boolean(visible));
+    ipcRenderer.on('mini-player-visibility-changed', listener);
+    return () => ipcRenderer.removeListener('mini-player-visibility-changed', listener);
+  },
 });

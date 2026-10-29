@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, nativeImage, Tray, Menu } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -101,6 +101,10 @@ function safeFileName(name) {
 }
 
 let mainWindow = null;
+let miniWindow = null;
+let tray = null;
+let isQuitting = false;
+let lastMiniPlayerState = {};
 
 /* ---------- Oturumluk geçici tam şarkı önbelleği ---------- */
 const temporaryAudioCache = new Map(); // normalized query -> { filePath, duration }
@@ -339,7 +343,16 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
+      backgroundThrottling: false,
     },
+  });
+
+  mainWindow.on('close', (event) => {
+    if (!isQuitting && miniWindow && !miniWindow.isDestroyed()) {
+      event.preventDefault();
+      mainWindow.hide();
+      createTray();
+    }
   });
 
   // Prod: built files. Dev: Vite dev server (fallback to dist).
@@ -350,6 +363,84 @@ function createWindow() {
       mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
     });
   }
+}
+
+function appIconPath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'icon.png')
+    : path.join(__dirname, '..', 'build', 'icon.png');
+}
+
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+  mainWindow.show();
+  mainWindow.restore();
+  mainWindow.focus();
+}
+
+function createTray() {
+  if (tray) return tray;
+  const icon = nativeImage.createFromPath(appIconPath()).resize({ width: 16, height: 16 });
+  tray = new Tray(icon);
+  tray.setToolTip('Lpotify');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Lpotify’ı Aç', click: showMainWindow },
+    { label: 'Mini Oynatıcıyı Göster', click: () => createMiniWindow() },
+    { type: 'separator' },
+    { label: 'Çıkış', click: () => { isQuitting = true; app.quit(); } },
+  ]));
+  tray.on('click', showMainWindow);
+  return tray;
+}
+
+function notifyMiniVisibility(visible) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('mini-player-visibility-changed', visible);
+  }
+}
+
+function createMiniWindow() {
+  if (miniWindow && !miniWindow.isDestroyed()) {
+    miniWindow.show();
+    miniWindow.focus();
+    return miniWindow;
+  }
+  miniWindow = new BrowserWindow({
+    width: 380,
+    height: 190,
+    minWidth: 330,
+    minHeight: 170,
+    maxHeight: 260,
+    frame: false,
+    transparent: false,
+    alwaysOnTop: true,
+    resizable: true,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    backgroundColor: '#171717',
+    icon: appIconPath(),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      backgroundThrottling: false,
+    },
+  });
+  miniWindow.setAlwaysOnTop(true, 'floating');
+  miniWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  miniWindow.loadFile(path.join(__dirname, 'mini-player.html'));
+  miniWindow.webContents.on('did-finish-load', () => {
+    if (miniWindow && !miniWindow.isDestroyed()) {
+      miniWindow.webContents.send('mini-player-state', lastMiniPlayerState);
+    }
+  });
+  miniWindow.on('closed', () => {
+    miniWindow = null;
+    notifyMiniVisibility(false);
+  });
+  notifyMiniVisibility(true);
+  return miniWindow;
 }
 
 /**
@@ -559,14 +650,51 @@ ipcMain.on('taskbar-player-state', (_event, state) => {
   updateTaskbarButtons(state);
 });
 
+ipcMain.handle('toggle-mini-player', () => {
+  if (miniWindow && !miniWindow.isDestroyed()) {
+    miniWindow.close();
+    return false;
+  }
+  createMiniWindow();
+  return true;
+});
+
+ipcMain.handle('close-mini-player', () => {
+  if (miniWindow && !miniWindow.isDestroyed()) miniWindow.close();
+  return true;
+});
+
+ipcMain.on('mini-player-state', (_event, state) => {
+  lastMiniPlayerState = state && typeof state === 'object' ? state : {};
+  if (miniWindow && !miniWindow.isDestroyed()) {
+    miniWindow.webContents.send('mini-player-state', lastMiniPlayerState);
+  }
+});
+
+ipcMain.on('mini-player-action', (event, action) => {
+  // Mini pencerenin komutlarını yalnızca ana oynatıcıya ilet.
+  if (miniWindow && event.sender === miniWindow.webContents && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('mini-player-action', action);
+  }
+});
+
 app.whenReady().then(() => {
   // Görev çubuğu sağ tık menüsünde Electron logosu yerine Lpotify ikonu görünsün.
   if (process.platform === 'win32') app.setAppUserModelId('com.lpotify.app');
   startProxy();
   createWindow();
 });
-app.on('before-quit', cleanupTemporaryAudio);
-app.on('window-all-closed', () => app.quit());
+app.on('before-quit', () => {
+  isQuitting = true;
+  cleanupTemporaryAudio();
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
+});
+app.on('window-all-closed', () => {
+  if (!tray && !miniWindow) app.quit();
+});
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  showMainWindow();
 });

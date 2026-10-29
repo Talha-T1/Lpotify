@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lpotify Mini Oynatıcı</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, "Segoe UI", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; height: 100vh; overflow: hidden; background: #171717; color: #fff; user-select: none; }
+    .shell { height: 100%; display: flex; flex-direction: column; border: 1px solid #333; border-radius: 13px; overflow: hidden; box-shadow: 0 18px 55px rgba(0,0,0,.55); }
+    .drag { -webkit-app-region: drag; display: flex; align-items: center; gap: 10px; padding: 10px 12px 7px; min-height: 49px; }
+    .logo { width: 25px; height: 25px; border-radius: 50%; display: grid; place-items: center; background: #1db954; color: #050505; font-size: 14px; font-weight: 900; }
+    .meta { min-width: 0; flex: 1; }
+    .title { font-size: 13px; font-weight: 750; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .artist { margin-top: 2px; font-size: 11px; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    button, input { -webkit-app-region: no-drag; }
+    button { border: 0; color: inherit; background: transparent; cursor: pointer; }
+    .top-button { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: #aaa; }
+    .top-button:hover, .control:hover { color: #fff; background: #303030; }
+    .lyrics { min-height: 50px; flex: 1; padding: 2px 18px 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; overflow: hidden; }
+    .lyric-current { width: 100%; font-size: 14px; line-height: 1.35; font-weight: 750; color: #1ed760; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 18px rgba(30,215,96,.25); }
+    .lyric-next { width: 100%; margin-top: 3px; font-size: 11px; color: #777; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .progress-wrap { display: flex; align-items: center; gap: 7px; padding: 0 13px; }
+    .time { width: 30px; font-size: 9px; color: #888; font-variant-numeric: tabular-nums; }
+    .time:last-child { text-align: right; }
+    input[type=range] { flex: 1; height: 3px; accent-color: #1db954; cursor: pointer; }
+    .controls { height: 51px; display: flex; align-items: center; justify-content: center; gap: 18px; padding: 5px 10px 9px; }
+    .control { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #bbb; font-size: 17px; }
+    .play { width: 36px; height: 36px; background: #fff; color: #000; font-size: 16px; }
+    .play:hover { background: #1ed760; color: #000; transform: scale(1.04); }
+    .active { color: #1ed760; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="drag">
+      <div class="logo">L</div>
+      <div class="meta">
+        <div id="title" class="title">Lpotify</div>
+        <div id="artist" class="artist">Bir şarkı seçin</div>
+      </div>
+      <button id="lyricsToggle" class="top-button" title="Şarkı sözlerini aç/kapat">♫</button>
+      <button id="close" class="top-button" title="Mini oynatıcıyı kapat">✕</button>
+    </div>
+    <div id="lyrics" class="lyrics">
+      <div id="lyricCurrent" class="lyric-current">Şarkı sözleri kapalı</div>
+      <div id="lyricNext" class="lyric-next"></div>
+    </div>
+    <div class="progress-wrap">
+      <span id="elapsed" class="time">0:00</span>
+      <input id="progress" type="range" min="0" max="100" value="0" step="0.1" />
+      <span id="duration" class="time">0:00</span>
+    </div>
+    <div class="controls">
+      <button id="repeat" class="control" title="Tekrar">↻</button>
+      <button id="previous" class="control" title="Önceki">⏮</button>
+      <button id="play" class="control play" title="Oynat / durdur">▶</button>
+      <button id="next" class="control" title="Sonraki">⏭</button>
+    </div>
+  </div>
+  <script src="mini-player.js"></script>
+</body>
+</html>
