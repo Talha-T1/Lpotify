@@ -49,13 +49,15 @@
     $('title').textContent = state.title || 'Lpotify';
     $('artist').textContent = state.artist || 'Bir şarkı seçin';
     if (state.coverUrl && $('cover').src !== state.coverUrl) $('cover').src = state.coverUrl;
-    $('play').textContent = state.isPlaying ? '❚❚' : '▶';
+    $('playIcon').innerHTML = state.isPlaying
+      ? '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>'
+      : '<path d="M8 5v14l11-7z"/>';
     $('elapsed').textContent = formatTime(state.progress);
     $('duration').textContent = formatTime(state.duration);
     $('progress').max = Math.max(1, Number(state.duration) || 1);
     $('progress').value = Math.min(Number(state.progress) || 0, Number($('progress').max));
     $('repeat').classList.toggle('active-control', state.repeat && state.repeat !== 'off');
-    $('repeat').textContent = state.repeat === 'one' ? '↻¹' : '↻';
+    $('repeat').dataset.mode = state.repeat === 'one' ? 'one' : state.repeat || 'off';
     $('lyricsToggle').classList.toggle('active-control', Boolean(state.lyricsEnabled));
     renderLyrics(state);
   }
@@ -66,8 +68,18 @@
   $('next').addEventListener('click', () => send({ action: 'next' }));
   $('repeat').addEventListener('click', () => send({ action: 'toggle-repeat' }));
   $('lyricsToggle').addEventListener('click', () => send({ action: 'toggle-lyrics' }));
+  $('alwaysOnTop').addEventListener('click', async () => {
+    const enabled = await window.lpotify?.toggleMiniPlayerAlwaysOnTop?.();
+    $('alwaysOnTop').classList.toggle('active-control', Boolean(enabled));
+    $('alwaysOnTop').title = enabled ? 'Her zaman önde: açık' : 'Her zaman önde: kapalı';
+  });
   $('progress').addEventListener('input', (event) => send({ action: 'seek', time: Number(event.target.value) }));
   $('close').addEventListener('click', () => window.lpotify?.closeMiniPlayer?.());
   window.lpotify?.onMiniPlayerState?.(render);
+  window.lpotify?.getMiniPlayerSettings?.().then((settings) => {
+    const enabled = Boolean(settings?.alwaysOnTop);
+    $('alwaysOnTop').classList.toggle('active-control', enabled);
+    $('alwaysOnTop').title = enabled ? 'Her zaman önde: açık' : 'Her zaman önde: kapalı';
+  });
   render(currentState);
 })();

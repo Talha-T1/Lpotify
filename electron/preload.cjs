@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('lpotify', {
   },
   toggleMiniPlayer: () => ipcRenderer.invoke('toggle-mini-player'),
   closeMiniPlayer: () => ipcRenderer.invoke('close-mini-player'),
+  getMiniPlayerSettings: () => ipcRenderer.invoke('get-mini-player-settings'),
+  toggleMiniPlayerAlwaysOnTop: () => ipcRenderer.invoke('toggle-mini-player-always-on-top'),
   updateMiniPlayerState: (state) => ipcRenderer.send('mini-player-state', state),
   onMiniPlayerState: (callback) => {
     const listener = (_event, state) => callback(state);

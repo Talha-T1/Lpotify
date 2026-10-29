@@ -3,50 +3,59 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lpotify Mini Oynatıcı</title>
+  <title>Lpotify</title>
   <style>
     :root { color-scheme: dark; font-family: Inter, "Segoe UI", sans-serif; }
     * { box-sizing: border-box; }
-    body { margin: 0; height: 100vh; overflow: hidden; background: #171717; color: #fff; user-select: none; }
-    .shell { height: 100%; display: flex; flex-direction: column; border: 1px solid #333; border-radius: 14px; overflow: hidden; box-shadow: 0 18px 55px rgba(0,0,0,.58); }
-    .drag { -webkit-app-region: drag; display: flex; align-items: center; gap: 9px; padding: 9px 11px; min-height: 44px; background: #151515; }
-    .logo { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: #1db954; color: #050505; font-size: 13px; font-weight: 900; }
-    .window-title { min-width: 0; flex: 1; font-size: 11px; color: #aaa; font-weight: 700; }
+    body { margin: 0; height: 100vh; overflow: hidden; background: #151515; color: #fff; user-select: none; }
+    .shell { height: 100%; display: flex; flex-direction: column; border: 1px solid #333; border-radius: 15px; overflow: hidden; box-shadow: 0 18px 55px rgba(0,0,0,.6); }
+    .drag { -webkit-app-region: drag; flex: 0 0 38px; display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 5px 7px; background: #151515; }
     button, input { -webkit-app-region: no-drag; }
     button { border: 0; color: inherit; background: transparent; cursor: pointer; }
-    .top-button { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: #aaa; }
+    svg { display: block; }
+    .top-button, .control { display: grid; place-items: center; border-radius: 50%; color: #aaa; transition: color .18s, background .18s, transform .18s; }
+    .top-button { width: 28px; height: 28px; }
     .top-button:hover, .control:hover { color: #fff; background: #303030; }
-    .cover-wrap { position: relative; height: 176px; margin: 0 12px; border-radius: 11px; overflow: hidden; background: #252525; box-shadow: 0 12px 30px rgba(0,0,0,.38); }
-    .cover { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .cover-shade { position: absolute; inset: auto 0 0; height: 54%; background: linear-gradient(transparent, rgba(0,0,0,.82)); }
-    .meta { position: absolute; left: 13px; right: 13px; bottom: 11px; min-width: 0; }
-    .title { font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .artist { margin-top: 2px; font-size: 11px; color: #d0d0d0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .lyrics { position: relative; height: 118px; margin: 9px 15px 3px; overflow: hidden; mask-image: linear-gradient(to bottom, #000 0%, #000 74%, transparent 100%); }
-    .lyrics-list { display: flex; flex-direction: column; gap: 7px; transform: translateY(0); }
-    .lyrics-list.rise { animation: rise .34s cubic-bezier(.22,.8,.3,1); }
-    @keyframes rise { from { transform: translateY(18px); opacity: .45; } to { transform: translateY(0); opacity: 1; } }
-    .lyric-line { min-height: 18px; padding: 0 4px; font-size: 12px; line-height: 1.35; font-weight: 650; color: #f2f2f2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .25s, font-size .25s, opacity .25s; opacity: .78; }
-    .lyric-line.active { color: #1ed760; font-size: 14px; font-weight: 800; opacity: 1; text-shadow: 0 0 18px rgba(30,215,96,.28); }
+    .top-button.active-control { color: #1ed760; background: rgba(30,215,96,.12); }
+    .cover-wrap { position: relative; flex: 0 0 auto; aspect-ratio: 1 / 1; width: calc(100% - 20px); margin: 0 10px; border-radius: 12px; overflow: hidden; background: #080808; box-shadow: 0 12px 30px rgba(0,0,0,.42); }
+    .cover { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .cover-shade { position: absolute; inset: auto 0 0; height: 45%; background: linear-gradient(transparent, rgba(0,0,0,.88)); }
+    .meta { position: absolute; left: 14px; right: 14px; bottom: 12px; min-width: 0; }
+    .title { font-size: 16px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .artist { margin-top: 3px; font-size: 11px; color: #d2d2d2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lyrics { position: relative; flex: 1 1 auto; min-height: 88px; margin: 10px 15px 3px; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 78%, transparent 100%); mask-image: linear-gradient(to bottom, #000 0%, #000 78%, transparent 100%); }
+    .lyrics-list { display: flex; flex-direction: column; gap: 8px; }
+    .lyrics-list.rise { animation: rise .36s cubic-bezier(.22,.8,.3,1); }
+    @keyframes rise { from { transform: translateY(22px); opacity: .42; } to { transform: translateY(0); opacity: 1; } }
+    .lyric-line { min-height: 19px; padding: 0 3px; font-size: 12px; line-height: 1.42; font-weight: 650; color: #fff; white-space: normal; overflow-wrap: break-word; transition: color .25s, font-size .25s, opacity .25s; opacity: .82; }
+    .lyric-line.active { color: #1ed760; font-size: 14px; font-weight: 850; opacity: 1; text-shadow: 0 0 18px rgba(30,215,96,.3); }
     .lyrics-message { height: 100%; display: flex; align-items: center; justify-content: center; color: #999; font-size: 12px; text-align: center; }
-    .progress-wrap { display: flex; align-items: center; gap: 7px; padding: 2px 13px 0; }
-    .time { width: 31px; font-size: 9px; color: #888; font-variant-numeric: tabular-nums; }
+    .progress-wrap { flex: 0 0 25px; display: flex; align-items: center; gap: 8px; padding: 0 14px; }
+    .time { width: 32px; font-size: 9px; color: #888; font-variant-numeric: tabular-nums; }
     .time:last-child { text-align: right; }
     input[type=range] { flex: 1; height: 3px; accent-color: #1db954; cursor: pointer; }
-    .controls { height: 54px; display: flex; align-items: center; justify-content: center; gap: 20px; padding: 5px 10px 10px; }
-    .control { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #bbb; font-size: 17px; }
-    .play { width: 38px; height: 38px; background: #fff; color: #000; font-size: 16px; }
-    .play:hover { background: #1ed760; color: #000; transform: scale(1.04); }
+    .controls { flex: 0 0 60px; display: flex; align-items: center; justify-content: center; gap: 23px; padding: 4px 10px 11px; }
+    .control { position: relative; width: 34px; height: 34px; }
+    .control svg { width: 20px; height: 20px; }
+    .play { width: 42px; height: 42px; background: #fff; color: #000; box-shadow: 0 5px 18px rgba(0,0,0,.35); }
+    .play svg { width: 21px; height: 21px; }
+    .play:hover { background: #1ed760; color: #000; transform: scale(1.05); }
     .active-control { color: #1ed760; }
+    .control[data-mode="one"]::after { content: "1"; position: absolute; right: 1px; bottom: 0; width: 12px; height: 12px; display: grid; place-items: center; border-radius: 50%; background: #151515; color: #1ed760; font-size: 8px; font-weight: 800; }
   </style>
 </head>
 <body>
   <div class="shell">
     <div class="drag">
-      <div class="logo">L</div>
-      <div class="window-title">Lpotify Mini Oynatıcı</div>
-      <button id="lyricsToggle" class="top-button" title="Şarkı sözlerini aç/kapat">♫</button>
-      <button id="close" class="top-button" title="Mini oynatıcıyı kapat">✕</button>
+      <button id="alwaysOnTop" class="top-button" title="Her zaman önde">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="m5 3 14 14"/><path d="M8.5 8.5 5 12l7 1 1 7 3.5-3.5"/><path d="M15 4.5 18.5 8"/></svg>
+      </button>
+      <button id="lyricsToggle" class="top-button" title="Şarkı sözlerini aç/kapat">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>
+      </button>
+      <button id="close" class="top-button" title="Mini oynatıcıyı kapat">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
     </div>
     <div class="cover-wrap">
       <img id="cover" class="cover" alt="" />
@@ -56,19 +65,25 @@
         <div id="artist" class="artist">Bir şarkı seçin</div>
       </div>
     </div>
-    <div id="lyrics" class="lyrics">
-      <div id="lyricsList" class="lyrics-list"></div>
-    </div>
+    <div id="lyrics" class="lyrics"><div id="lyricsList" class="lyrics-list"></div></div>
     <div class="progress-wrap">
       <span id="elapsed" class="time">0:00</span>
       <input id="progress" type="range" min="0" max="100" value="0" step="0.1" />
       <span id="duration" class="time">0:00</span>
     </div>
     <div class="controls">
-      <button id="repeat" class="control" title="Tekrar">↻</button>
-      <button id="previous" class="control" title="Önceki">⏮</button>
-      <button id="play" class="control play" title="Oynat / durdur">▶</button>
-      <button id="next" class="control" title="Sonraki">⏭</button>
+      <button id="repeat" class="control" title="Tekrar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 1 4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="m7 23-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+      </button>
+      <button id="previous" class="control" title="Önceki">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM18 5v14l-10-7z"/></svg>
+      </button>
+      <button id="play" class="control play" title="Oynat / durdur">
+        <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+      <button id="next" class="control" title="Sonraki">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM6 5v14l10-7z"/></svg>
+      </button>
     </div>
   </div>
   <script src="mini-player.js"></script>

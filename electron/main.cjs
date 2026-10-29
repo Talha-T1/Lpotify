@@ -105,6 +105,7 @@ let miniWindow = null;
 let tray = null;
 let isQuitting = false;
 let lastMiniPlayerState = {};
+let miniAlwaysOnTop = true;
 
 /* ---------- Oturumluk geçici tam şarkı önbelleği ---------- */
 const temporaryAudioCache = new Map(); // normalized query -> { filePath, duration }
@@ -406,14 +407,14 @@ function createMiniWindow() {
     return miniWindow;
   }
   miniWindow = new BrowserWindow({
-    width: 350,
-    height: 470,
-    minWidth: 320,
-    minHeight: 410,
-    maxHeight: 600,
+    width: 340,
+    height: 620,
+    minWidth: 310,
+    minHeight: 520,
+    maxHeight: 900,
     frame: false,
     transparent: false,
-    alwaysOnTop: true,
+    alwaysOnTop: miniAlwaysOnTop,
     resizable: true,
     maximizable: false,
     fullscreenable: false,
@@ -427,7 +428,7 @@ function createMiniWindow() {
       backgroundThrottling: false,
     },
   });
-  miniWindow.setAlwaysOnTop(true, 'floating');
+  miniWindow.setAlwaysOnTop(miniAlwaysOnTop, 'floating');
   miniWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   miniWindow.loadFile(path.join(__dirname, 'mini-player.html'));
   miniWindow.webContents.on('did-finish-load', () => {
@@ -662,6 +663,16 @@ ipcMain.handle('toggle-mini-player', () => {
 ipcMain.handle('close-mini-player', () => {
   if (miniWindow && !miniWindow.isDestroyed()) miniWindow.close();
   return true;
+});
+
+ipcMain.handle('get-mini-player-settings', () => ({ alwaysOnTop: miniAlwaysOnTop }));
+
+ipcMain.handle('toggle-mini-player-always-on-top', () => {
+  miniAlwaysOnTop = !miniAlwaysOnTop;
+  if (miniWindow && !miniWindow.isDestroyed()) {
+    miniWindow.setAlwaysOnTop(miniAlwaysOnTop, 'floating');
+  }
+  return miniAlwaysOnTop;
 });
 
 ipcMain.on('mini-player-state', (_event, state) => {
