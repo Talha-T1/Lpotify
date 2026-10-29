@@ -96,6 +96,7 @@ export function onTaskbarPlayerAction(
  *  Electron'da güvenilir yol: dahili yerel sunucu (Range destekli).
  *  Tarayıcıda: file:// adresi döner (yine de çoğunlukla kullanılmaz). */
 const localAudioUrlCache = new Map<string, string>();
+const prewarmedLocalAudio = new Map<string, HTMLAudioElement>();
 
 export async function getLocalAudioUrl(p: string): Promise<string> {
   const cached = localAudioUrlCache.get(p);
@@ -114,7 +115,16 @@ export async function getLocalAudioUrl(p: string): Promise<string> {
 
 /** İndirilenler sayfasındaki yerel adresleri tıklamadan önce hazırlar. */
 export function prewarmLocalAudioUrls(paths: string[]): void {
-  paths.filter(Boolean).forEach((path) => { void getLocalAudioUrl(path); });
+  paths.filter(Boolean).forEach((path) => {
+    if (prewarmedLocalAudio.has(path)) return;
+    void getLocalAudioUrl(path).then((url) => {
+      const audio = new Audio();
+      audio.preload = 'metadata';
+      audio.src = url;
+      prewarmedLocalAudio.set(path, audio);
+      audio.load();
+    });
+  });
 }
 
 /** Yerel dosya yolunu <audio>/Howler ile çalınabilir file:// adresine çevirir. */

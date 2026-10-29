@@ -222,6 +222,32 @@ function localAudioContentType(ext) {
   return 'audio/mp4';
 }
 
+function parseLocalByteRange(value, total) {
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(String(value || '').trim());
+  if (!match || total <= 0) return null;
+  const startText = match[1];
+  const endText = match[2];
+  if (!startText && !endText) return null;
+
+  let start;
+  let end;
+  if (!startText) {
+    // M4A/MP4 oynatıcıları metadata için sıklıkla "son N bayt" ister.
+    const suffixLength = Math.min(Number(endText), total);
+    if (!Number.isFinite(suffixLength) || suffixLength <= 0) return null;
+    start = total - suffixLength;
+    end = total - 1;
+  } else {
+    start = Number(startText);
+    end = endText ? Math.min(Number(endText), total - 1) : total - 1;
+  }
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start >= total || end < start) {
+    return null;
+  }
+  return { start, end };
+}
+
 function startProxy() {
   proxyServer = http.createServer((req, res) => {
     const token = new URL(req.url, 'http://x').searchParams.get('t');
@@ -238,18 +264,24 @@ function startProxy() {
       const headers = {
         'Content-Type': localAudioContentType(entry.ext),
         'Accept-Ranges': 'bytes',
+        'Cache-Control': 'private, max-age=3600',
       };
       if (range) {
-        const m = /bytes=(\d*)-(\d*)/.exec(range);
-        const start = m && m[1] ? parseInt(m[1], 10) : 0;
-        const end = m && m[2] ? Math.min(parseInt(m[2], 10), total - 1) : total - 1;
+        const parsedRange = parseLocalByteRange(range, total);
+        if (!parsedRange) {
+          res.writeHead(416, { 'Content-Range': 'bytes */' + total });
+          return res.end();
+        }
+        const { start, end } = parsedRange;
         headers['Content-Range'] = 'bytes ' + start + '-' + end + '/' + total;
         headers['Content-Length'] = end - start + 1;
         res.writeHead(206, headers);
+        if (req.method === 'HEAD') return res.end();
         fs.createReadStream(entry.filePath, { start, end }).pipe(res);
       } else {
         headers['Content-Length'] = total;
         res.writeHead(200, headers);
+        if (req.method === 'HEAD') return res.end();
         fs.createReadStream(entry.filePath).pipe(res);
       }
       req.on('close', () => {});
